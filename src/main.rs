@@ -4,13 +4,13 @@
 struct Machine {
     // main memory (4K)
     memory: [u8; 4096],
-    
+
     registers: [u8; 16],
     index_register: u16,
     pc: u32,
 
     // graphics
-    gfx: [u8; 64*32],
+    gfx: [u8; 64 * 32],
 
     // timers
     delay_timer: u16,
@@ -20,15 +20,23 @@ struct Machine {
     stack: Vec<u16>,
 }
 
-enum Timer{ Sound, Delay }
+enum Timer {
+    Sound,
+    Delay,
+}
 
 impl Machine {
     fn new() -> Machine {
-        return Machine{
+        return Machine {
+            memory: [0; 4096],
+            registers: [0; 16],
             index_register: 0,
-            
+            pc: 0,
+            gfx: [0; 64 * 32],
+            delay_timer: u16::MAX,
+            sound_timer: u16::MAX,
             stack: Vec::new(),
-        }
+        };
     }
 
     fn VS(self) -> u8 {
@@ -51,5 +59,4 @@ impl Machine {
 
 fn main() {
     println!("C H I P - 8");
-
 }
