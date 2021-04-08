@@ -10,6 +10,11 @@ use sdl2::pixels::Color;
 use sdl2::render::WindowCanvas;
 use std::time::Duration;
 
+// global constant
+const VIDEO_SCALING: u32 = 4;
+const GFX_WIDTH: usize = 128;
+const GFX_HEIGHT: usize = 32;
+
 #[derive(Debug)]
 struct Machine {
     // main memory (4K)
@@ -20,7 +25,7 @@ struct Machine {
     pc: u32,
 
     // graphics
-    gfx: [u8; 64 * 32],
+    gfx: [u8; GFX_WIDTH * GFX_HEIGHT],
 
     // timers
     delay_timer: u16,
@@ -49,7 +54,7 @@ impl Machine {
             registers: [0; 16],
             index_register: 0,
             pc: 0,
-            gfx: [0; 64 * 32],
+            gfx: [0; GFX_WIDTH * GFX_HEIGHT],
             delay_timer: u16::MAX,
             sound_timer: u16::MAX,
             stack: Vec::new(),
@@ -92,22 +97,33 @@ impl Machine {
     }
 
     fn load_fontset(&mut self) {
-        let code_0: [u8; 5] = [0xF0, 0x90, 0x90, 0x90, 0xF0];
-        let code_1: [u8; 5] = [0x20, 0x60, 0x20, 0x20, 0x70];
-        let code_2: [u8; 5] = [0xF0, 0x10, 0xF0, 0x80, 0xF0];
-        let code_3: [u8; 5] = [0xF0, 0x10, 0xF0, 0x10, 0xF0];
-        let code_4: [u8; 5] = [0x90, 0x90, 0xF0, 0x10, 0x10];
-        let code_5: [u8; 5] = [0xF0, 0x80, 0xF0, 0x10, 0xF0];
-        let code_6: [u8; 5] = [0xF0, 0x80, 0xF0, 0x90, 0xF0];
-        let code_7: [u8; 5] = [0xF0, 0x10, 0x20, 0x40, 0x40];
-        let code_8: [u8; 5] = [0xF0, 0x90, 0xF0, 0x90, 0xF0];
-        let code_9: [u8; 5] = [0xF0, 0x90, 0xF0, 0x10, 0xF0];
-        let code_a: [u8; 5] = [0xF0, 0x90, 0xF0, 0x90, 0x90];
-        let code_b: [u8; 5] = [0xE0, 0x90, 0xE0, 0x90, 0xE0];
-        let code_c: [u8; 5] = [0xF0, 0x80, 0x80, 0x80, 0xF0];
-        let code_d: [u8; 5] = [0xE0, 0x90, 0x90, 0x90, 0xE0];
-        let code_e: [u8; 5] = [0xF0, 0x80, 0xF0, 0x80, 0xF0];
-        let code_f: [u8; 5] = [0xF0, 0x80, 0xF0, 0x80, 0x80];
+        let codes: [[u8; 5]; 16] = [
+            [0xF0, 0x90, 0x90, 0x90, 0xF0], // 0
+            [0x20, 0x60, 0x20, 0x20, 0x70], // 1
+            [0xF0, 0x10, 0xF0, 0x80, 0xF0], // 2
+            [0xF0, 0x10, 0xF0, 0x10, 0xF0], // 3
+            [0x90, 0x90, 0xF0, 0x10, 0x10], // 4
+            [0xF0, 0x80, 0xF0, 0x10, 0xF0], // 5
+            [0xF0, 0x80, 0xF0, 0x90, 0xF0], // 6
+            [0xF0, 0x10, 0x20, 0x40, 0x40], // 7
+            [0xF0, 0x90, 0xF0, 0x90, 0xF0], // 8
+            [0xF0, 0x90, 0xF0, 0x10, 0xF0], // 9
+            [0xF0, 0x90, 0xF0, 0x90, 0x90], // A
+            [0xE0, 0x90, 0xE0, 0x90, 0xE0], // B
+            [0xF0, 0x80, 0x80, 0x80, 0xF0], // C
+            [0xE0, 0x90, 0x90, 0x90, 0xE0], // D
+            [0xF0, 0x80, 0xF0, 0x80, 0xF0], // E
+            [0xF0, 0x80, 0xF0, 0x80, 0x80], // F
+        ];
+
+        let mut x = 0;
+        for font_bytes in &codes {
+            // copy the font to the memory
+            for b in font_bytes {
+                self.memory[x] = *b;
+                x += 1;
+            }
+        }
     }
 }
 
@@ -124,7 +140,7 @@ fn main() {
     let video_subsystem = sdl_context.video().unwrap();
 
     let window = video_subsystem
-        .window("CHIP 8", 800, 600)
+        .window("CHIP 8", 128 * VIDEO_SCALING, 32 * VIDEO_SCALING)
         .position_centered()
         .build()
         .unwrap();
