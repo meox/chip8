@@ -4,11 +4,15 @@
 // - https://en.wikipedia.org/wiki/CHIP-8
 // - http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
 
+use std::io;
+use std::io::prelude::*;
+use std::fs::File;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::WindowCanvas;
 use std::time::Duration;
+use std::convert::TryFrom;
 
 // global constant
 const VIDEO_SCALING: u32 = 4;
@@ -40,6 +44,9 @@ struct Machine {
 
     // current opcode
     opcode: u16,
+
+    // program size
+    program_size: u32,
 }
 
 enum Timer {
@@ -61,6 +68,7 @@ impl Machine {
             sp: 0,
             keys: [0; 16],
             opcode: 0,
+            program_size: 0,
         };
     }
 
@@ -92,8 +100,27 @@ impl Machine {
         }
     }
 
-    fn load_program(&mut self, file: &str) {
+    fn load_program(&mut self, file: &str) -> Result<(), io::Error> {
+        let mut f = File::open(file)?;
+        let mut buffer = Vec::new();
+        // read the whole file
+        let program_size = f.read_to_end(&mut buffer)?;
+        self.program_size = u32::try_from(program_size).unwrap();
+
         // program start at 0x200
+        let mut i = 0;
+        for d in buffer {
+            self.memory[0x200+i] = d;
+            i += 1;
+        }
+
+        Ok(())
+    }
+
+    fn fetch_opcode(&mut self) {
+        if self.pc > self.program_size {
+            return
+        }
     }
 
     fn load_fontset(&mut self) {
@@ -133,8 +160,21 @@ fn render(canvas: &mut WindowCanvas, color: Color) {
     canvas.present();
 }
 
-fn main() {
+fn main() -> io::Result<()> {
     println!("C H I P - 8\nEmulator engine");
+
+    let mut m = Machine::new();
+    // init
+    m.init();
+
+    // load program
+    let program_file = "pong";
+    match m.load_program(program_file) {
+        Ok(_) => println!("program loaded!"),
+        Err(e) => panic!("cannot load program file `{}`: {}", program_file, e)
+    }
+
+    // set video
 
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
@@ -150,13 +190,6 @@ fn main() {
     canvas.set_draw_color(Color::RGB(0, 0, 0));
     canvas.clear();
     canvas.present();
-
-    let mut m = Machine::new();
-    // init
-    m.init();
-
-    // load program
-    m.load_program("pong");
 
     let mut event_pump = sdl_context.event_pump().unwrap();
     let mut i = 0;
@@ -185,4 +218,6 @@ fn main() {
         // Time management!
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
+
+    Ok(())
 }
