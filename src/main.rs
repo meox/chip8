@@ -8,7 +8,6 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::WindowCanvas;
-use std::convert::TryFrom;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
@@ -18,6 +17,7 @@ use std::time::Duration;
 const VIDEO_SCALING: u32 = 4;
 const GFX_WIDTH: usize = 128;
 const GFX_HEIGHT: usize = 32;
+const PROGRAM_START_ADDRESS: usize = 0x200;
 
 #[derive(Debug)]
 struct Machine {
@@ -26,7 +26,7 @@ struct Machine {
 
     registers: [u8; 16],
     index_register: u16,
-    pc: u32,
+    pc: usize,
 
     // graphics
     gfx: [u8; GFX_WIDTH * GFX_HEIGHT],
@@ -46,7 +46,7 @@ struct Machine {
     opcode: u16,
 
     // program size
-    program_size: u32,
+    program_size: usize,
 }
 
 enum Timer {
@@ -77,7 +77,7 @@ impl Machine {
         *self = Machine::new();
 
         // set the Program Counter
-        self.pc = 0x200;
+        self.pc = PROGRAM_START_ADDRESS;
 
         // load fontset
         self.load_fontset();
@@ -105,7 +105,7 @@ impl Machine {
         let mut buffer = Vec::new();
         // read the whole file
         let program_size = f.read_to_end(&mut buffer)?;
-        self.program_size = u32::try_from(program_size).unwrap();
+        self.program_size = program_size;
 
         self.load_program(buffer);
         Ok(())
@@ -115,16 +115,18 @@ impl Machine {
         // program start at 0x200
         let mut i = 0;
         for d in p {
-            self.memory[0x200 + i] = d;
+            self.memory[PROGRAM_START_ADDRESS + i] = d;
             i += 1;
         }
     }
 
     fn fetch_opcode(&mut self) -> u16 {
-        if self.pc > self.program_size {
+        if self.pc > PROGRAM_START_ADDRESS+self.program_size {
             return 0;
         }
-        return 0;
+        self.opcode = u16::from(self.memory[self.pc]) << 8 | u16::from(self.memory[self.pc + 1]);
+        self.pc += 2;
+        return self.opcode;
     }
 
     fn load_fontset(&mut self) {
@@ -235,8 +237,8 @@ mod tests {
         let mut m = Machine::new();
         // init
         m.init();
-        m.load_program(vec![]);
+        m.load_program(vec![0xA2, 0xF0]);
 
-        assert_eq!(m.fetch_opcode(), 0);
+        assert_eq!(0xA2F0, m.fetch_opcode());
     }
 }
