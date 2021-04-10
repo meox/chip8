@@ -4,15 +4,15 @@
 // - https://en.wikipedia.org/wiki/CHIP-8
 // - http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
 
-use std::io;
-use std::io::prelude::*;
-use std::fs::File;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::WindowCanvas;
-use std::time::Duration;
 use std::convert::TryFrom;
+use std::fs::File;
+use std::io;
+use std::io::prelude::*;
+use std::time::Duration;
 
 // global constant
 const VIDEO_SCALING: u32 = 4;
@@ -100,27 +100,31 @@ impl Machine {
         }
     }
 
-    fn load_program(&mut self, file: &str) -> Result<(), io::Error> {
+    fn load_program_file(&mut self, file: &str) -> Result<(), io::Error> {
         let mut f = File::open(file)?;
         let mut buffer = Vec::new();
         // read the whole file
         let program_size = f.read_to_end(&mut buffer)?;
         self.program_size = u32::try_from(program_size).unwrap();
 
-        // program start at 0x200
-        let mut i = 0;
-        for d in buffer {
-            self.memory[0x200+i] = d;
-            i += 1;
-        }
-
+        self.load_program(buffer);
         Ok(())
     }
 
-    fn fetch_opcode(&mut self) {
-        if self.pc > self.program_size {
-            return
+    fn load_program(&mut self, p: Vec<u8>) {
+        // program start at 0x200
+        let mut i = 0;
+        for d in p {
+            self.memory[0x200 + i] = d;
+            i += 1;
         }
+    }
+
+    fn fetch_opcode(&mut self) -> u16 {
+        if self.pc > self.program_size {
+            return 0;
+        }
+        return 0;
     }
 
     fn load_fontset(&mut self) {
@@ -161,17 +165,17 @@ fn render(canvas: &mut WindowCanvas, color: Color) {
 }
 
 fn main() -> io::Result<()> {
-    println!("C H I P - 8\nEmulator engine");
+    println!("C H I P - 8 - Emulator engine");
 
     let mut m = Machine::new();
     // init
     m.init();
 
     // load program
-    let program_file = "pong";
-    match m.load_program(program_file) {
+    let program_file = "data/test_opcode.ch8";
+    match m.load_program_file(program_file) {
         Ok(_) => println!("program loaded!"),
-        Err(e) => panic!("cannot load program file `{}`: {}", program_file, e)
+        Err(e) => panic!("cannot load program file `{}`: {}", program_file, e),
     }
 
     // set video
@@ -220,4 +224,19 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn machine_fetch_opcode() {
+        let mut m = Machine::new();
+        // init
+        m.init();
+        m.load_program(vec![]);
+
+        assert_eq!(m.fetch_opcode(), 0);
+    }
 }
