@@ -32,8 +32,8 @@ struct Machine {
     delay_timer: u16,
     sound_timer: u16,
     // stack
-    stack: Vec<u16>,
-    sp: u16,
+    stack: Vec<usize>,
+    sp: usize,
     // input key
     keys: [u8; 16],
     // current opcode
@@ -232,12 +232,25 @@ impl Machine {
         return self.opcode;
     }
 
-    fn exec(&mut self, canvas: &mut WindowCanvas) {
+    fn exec(&mut self) -> bool {
         let opcode = parse_opcode(self.fetch_opcode());
         match opcode {
-            OpCode::Clear => canvas.clear(),
+            OpCode::Clear => self.gfx = [0; GFX_HEIGHT*GFX_WIDTH],
+            OpCode::Return => {
+                let v = self.stack[self.sp];
+                self.pc = usize::from(v);
+                self.sp -= 1;
+            },
+            OpCode::JumpTo(n) => self.pc = usize::from(n),
+            OpCode::Call(n) => {
+                self.stack[self.sp] = self.pc;
+                self.sp += 1;
+                self.pc = usize::from(n);
+            },
+            
             _ => println!("Not implemented: {:?}", opcode),
         }
+        true
     }
 
     fn load_fontset(&mut self) {
@@ -351,5 +364,22 @@ mod tests {
         m.load_program(vec![0xA2, 0xF0]);
 
         assert_eq!(0xA2F0, m.fetch_opcode());
+    }
+
+    #[test]
+    fn machine_fetch_simple_exec() {
+        let mut m = Machine::new();
+        // init
+        m.init();
+
+        // v0 = 5 + 2
+        m.load_program(vec![
+            0x70, 0x05, // V0 = 5
+            0x71, 0x02, // V1 = 2
+            0x80, 0x14, // V0 += V1
+        ]);
+        m.exec();
+
+        assert_eq!(7, m.registers[0]);
     }
 }
