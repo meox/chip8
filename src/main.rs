@@ -58,6 +58,7 @@ type Register = u16;
 // In an addition operation, VF is the carry flag, while in subtraction, it is the "no borrow" flag.
 // In the draw instruction VF is set upon pixel collision.
 // The address register, which is named I, is 16 bits wide and is used with several opcodes that involve memory operations.
+#[derive(Debug)]
 enum OpCode {
     Clear,                           // 00E0: Clears the screen
     Return,                          // 00EE: Returns from a subroutine
@@ -93,6 +94,7 @@ enum OpCode {
     BCD(Register),     // FX33: set_BCD(Vx)
     DumpX(Register),   // FX55: Stores V0 to VX (including VX) in memory starting at address I
     LoadX(Register), // FX65: Fills V0 to VX (including VX) with values from memory starting at address I. The offset from I is increased by 1 for each value written, but I itself is left unmodified
+    Invalid,
 }
 
 fn extractX(opcode: u16) -> Register {
@@ -102,58 +104,56 @@ fn extractY(opcode: u16) -> Register {
     (opcode & 0x00F0) >> 4
 }
 
-fn parse_opcode(opcode: u16) -> Option<OpCode> {
+fn parse_opcode(opcode: u16) -> OpCode {
     if opcode == 0x00E0 {
-        return Some(OpCode::Clear);
+        return OpCode::Clear;
     }
     if opcode == 0x00EE {
-        return Some(OpCode::Return);
+        return OpCode::Return;
     }
 
     let class = opcode & 0xF000;
     let selector = opcode & 0x000F;
     match (class, selector) {
-        (1, _) => Some(OpCode::JumpTo(opcode & 0x0FFF)),
-        (2, _) => Some(OpCode::Call(opcode & 0x0FFF)),
-        (3, _) => Some(OpCode::SkipEqX(extractX(opcode), opcode & 0x00FF)),
-        (4, _) => Some(OpCode::SkipNotEq(extractX(opcode), opcode & 0x00FF)),
-        (5, 0) => Some(OpCode::SkipEqXY(extractX(opcode), extractY(opcode))),
-        (6, _) => Some(OpCode::SetX(extractX(opcode), opcode & 0x00FF)),
-        (7, _) => Some(OpCode::AddX(extractX(opcode), opcode & 0x00FF)),
-        (8, 0) => Some(OpCode::AssignXY(extractX(opcode), extractY(opcode))),
-        (8, 1) => Some(OpCode::OrXY(extractX(opcode), extractY(opcode))),
-        (8, 2) => Some(OpCode::AndXY(extractX(opcode), extractY(opcode))),
-        (8, 3) => Some(OpCode::XorXY(extractX(opcode), extractY(opcode))),
-        (8, 4) => Some(OpCode::AddXY(extractX(opcode), extractY(opcode))),
-        (8, 5) => Some(OpCode::SubXY(extractX(opcode), extractY(opcode))),
-        (8, 6) => Some(OpCode::ShiftRightX1(extractX(opcode))),
-        (8, 7) => Some(OpCode::SubYX(extractX(opcode), extractY(opcode))),
-        (8, 0xE) => Some(OpCode::ShiftLeftX1(extractX(opcode))),
-        (9, 0) => Some(OpCode::SkipNotEqXY(extractX(opcode), extractY(opcode))),
-        (0xA, _) => Some(OpCode::SetIR(opcode & 0x0FFF)),
-        (0xB, _) => Some(OpCode::Flow(opcode & 0x0FFF)),
-        (0xC, _) => Some(OpCode::RandX(extractX(opcode), opcode & 0x00FF)),
-        (0xD, _) => Some(OpCode::Draw(
-            extractX(opcode),
-            extractY(opcode),
-            opcode & 0x000F,
-        )),
-        (0xE, 9) => Some(OpCode::KeyEqX(extractX(opcode))),
-        (0xE, 1) => Some(OpCode::KeyNotEqX(extractX(opcode))),
+        (1, _) => OpCode::JumpTo(opcode & 0x0FFF),
+        (2, _) => OpCode::Call(opcode & 0x0FFF),
+        (3, _) => OpCode::SkipEqX(extractX(opcode), opcode & 0x00FF),
+        (4, _) => OpCode::SkipNotEq(extractX(opcode), opcode & 0x00FF),
+        (5, 0) => OpCode::SkipEqXY(extractX(opcode), extractY(opcode)),
+        (6, _) => OpCode::SetX(extractX(opcode), opcode & 0x00FF),
+        (7, _) => OpCode::AddX(extractX(opcode), opcode & 0x00FF),
+        (8, 0) => OpCode::AssignXY(extractX(opcode), extractY(opcode)),
+        (8, 1) => OpCode::OrXY(extractX(opcode), extractY(opcode)),
+        (8, 2) => OpCode::AndXY(extractX(opcode), extractY(opcode)),
+        (8, 3) => OpCode::XorXY(extractX(opcode), extractY(opcode)),
+        (8, 4) => OpCode::AddXY(extractX(opcode), extractY(opcode)),
+        (8, 5) => OpCode::SubXY(extractX(opcode), extractY(opcode)),
+        (8, 6) => OpCode::ShiftRightX1(extractX(opcode)),
+        (8, 7) => OpCode::SubYX(extractX(opcode), extractY(opcode)),
+        (8, 0xE) => OpCode::ShiftLeftX1(extractX(opcode)),
+        (9, 0) => OpCode::SkipNotEqXY(extractX(opcode), extractY(opcode)),
+        (0xA, _) => OpCode::SetIR(opcode & 0x0FFF),
+        (0xB, _) => OpCode::Flow(opcode & 0x0FFF),
+        (0xC, _) => OpCode::RandX(extractX(opcode), opcode & 0x00FF),
+        (0xD, _) => OpCode::Draw(extractX(opcode), extractY(opcode), opcode & 0x000F),
+        (0xE, 9) => OpCode::KeyEqX(extractX(opcode)),
+        (0xE, 1) => OpCode::KeyNotEqX(extractX(opcode)),
         (0xF, _) => {
             let z = opcode & 0x00F0;
             match (z, selector) {
-                (0, 7) => Some(OpCode::TimerX(extractX(opcode))),
-                (0, 0xA) => Some(OpCode::KeyPressX(extractX(opcode))),
-                (1, 5) => Some(OpCode::SetDelayTimer(extractX(opcode))),
-                (1, 8) => Some(OpCode::SetSoundTimer(extractX(opcode))),
-                (1, 0xE) => Some(OpCode::MemAdd(extractX(opcode))),
-                (2, 9) => Some(OpCode::SpriteX(extractX(opcode))),
-                (3, 3) => Some(OpCode::BCD(extractX(opcode))),
-                (5, 5) => Some(OpCode::DumpX(extractX(opcode))),
-                (6, 5) => Some(OpCode::LoadX(extractX(opcode))),
+                (0, 7) => OpCode::TimerX(extractX(opcode)),
+                (0, 0xA) => OpCode::KeyPressX(extractX(opcode)),
+                (1, 5) => OpCode::SetDelayTimer(extractX(opcode)),
+                (1, 8) => OpCode::SetSoundTimer(extractX(opcode)),
+                (1, 0xE) => OpCode::MemAdd(extractX(opcode)),
+                (2, 9) => OpCode::SpriteX(extractX(opcode)),
+                (3, 3) => OpCode::BCD(extractX(opcode)),
+                (5, 5) => OpCode::DumpX(extractX(opcode)),
+                (6, 5) => OpCode::LoadX(extractX(opcode)),
+                _ => OpCode::Invalid,
             }
         }
+        _ => OpCode::Invalid,
     }
 }
 
@@ -232,12 +232,11 @@ impl Machine {
         return self.opcode;
     }
 
-    fn exec(&mut self) {
-        let opcode = parse(self.fetch_opcode());
+    fn exec(&mut self, canvas: &mut WindowCanvas) {
+        let opcode = parse_opcode(self.fetch_opcode());
         match opcode {
-            0x00E0 => self.clear_screen(),
-            0x00EE => self.return_from_subroutine(),
-            _ => parse_and_exec(opcode),
+            OpCode::Clear => canvas.clear(),
+            _ => println!("Not implemented: {:?}", opcode),
         }
     }
 
