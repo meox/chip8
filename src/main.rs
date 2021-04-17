@@ -8,6 +8,7 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::WindowCanvas;
+use rand::Rng;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
@@ -22,7 +23,7 @@ const PROGRAM_START_ADDRESS: usize = 0x200;
 struct Machine {
     // main memory (4K)
     memory: [u8; 4096],
-    registers: [u8; 16],
+    registers: [u16; 16],
     index_register: u16,
     pc: usize,
 
@@ -47,7 +48,7 @@ enum Timer {
     Delay,
 }
 
-type Register = u16;
+type Register = usize;
 
 // NNN: address
 // NN: 8-bit constant
@@ -64,7 +65,7 @@ enum OpCode {
     Return,                          // 00EE: Returns from a subroutine
     JumpTo(u16),                     // 1NNN: Jumps to address NNN
     Call(u16),                       // 2NNN: Calls subroutine at NNN
-    SkipEqX(Register, u16), // 3XNN: Skips the next instruction if VX equals NN. (Usually the next instruction is a jump to skip a code block)
+    SkipEq(Register, u16), // 3XNN: Skips the next instruction if VX equals NN. (Usually the next instruction is a jump to skip a code block)
     SkipNotEq(Register, u16), // 4XNN: Skips the next instruction if VX doesn't equal NN. (Usually the next instruction is a jump to skip a code block)
     SkipEqXY(Register, Register), // 5XY0: Skips the next instruction if VX equals VY. (Usually the next instruction is a jump to skip a code block)
     SetX(Register, u16),          // 6XNN: Sets VX to NN
@@ -98,10 +99,10 @@ enum OpCode {
 }
 
 fn extractX(opcode: u16) -> Register {
-    (opcode & 0x0F00) >> 8
+    usize::from((opcode & 0x0F00) >> 8)
 }
 fn extractY(opcode: u16) -> Register {
-    (opcode & 0x00F0) >> 4
+    usize::from((opcode & 0x00F0) >> 4)
 }
 
 fn parse_opcode(opcode: u16) -> OpCode {
@@ -117,7 +118,7 @@ fn parse_opcode(opcode: u16) -> OpCode {
     match (class, selector) {
         (1, _) => OpCode::JumpTo(opcode & 0x0FFF),
         (2, _) => OpCode::Call(opcode & 0x0FFF),
-        (3, _) => OpCode::SkipEqX(extractX(opcode), opcode & 0x00FF),
+        (3, _) => OpCode::SkipEq(extractX(opcode), opcode & 0x00FF),
         (4, _) => OpCode::SkipNotEq(extractX(opcode), opcode & 0x00FF),
         (5, 0) => OpCode::SkipEqXY(extractX(opcode), extractY(opcode)),
         (6, _) => OpCode::SetX(extractX(opcode), opcode & 0x00FF),
@@ -186,7 +187,7 @@ impl Machine {
         self.load_fontset();
     }
 
-    fn VS(self) -> u8 {
+    fn VS(self) -> u16 {
         self.registers[15]
     }
 
@@ -247,7 +248,74 @@ impl Machine {
                 self.sp += 1;
                 self.pc = usize::from(n);
             },
-            
+            OpCode::SkipEq(r, n) => {
+                if self.registers[r] == n {
+                    self.pc += 1
+                }
+            },
+            OpCode::SkipNotEq(r, n) => {
+                if self.registers[r] != n {
+                    self.pc += 1
+                }
+            },
+            OpCode::SkipEqXY(rx, ry) => {
+                if self.registers[rx] == self.registers[ry] {
+                    self.pc += 1
+                }
+            },
+            OpCode::SetX(r, n) => self.registers[r] = n,
+            OpCode::AddX(r, n) => self.registers[r] = (self.registers[r] + n) & 0x00FF, // force cast to 8bit
+            OpCode::AssignXY(rx, ry) => self.registers[rx] = self.registers[ry],
+            OpCode::OrXY(rx, ry) => self.registers[rx] |= self.registers[ry],
+            OpCode::AndXY(rx, ry) => self.registers[rx] &= self.registers[ry],
+            OpCode::XorXY(rx, ry) => self.registers[rx] ^= self.registers[ry],
+            OpCode::AddXY(rx, ry) => {
+                self.registers[rx] += self.registers[ry];
+                if self.registers[rx] > 255 {
+                    self.registers[0xF] = 1 // set carry flag
+                } else {
+                    self.registers[0xF] = 0 // unset carry flag
+                }
+                self.registers[rx] &= 0x00FF;
+            },
+            OpCode::SubXY(rx, ry) => {
+                if self.registers[rx] >= self.registers[ry] {
+                    self.registers[rx] -= self.registers[ry];
+                    self.registers[0xF] = 1 // set borrow flag
+                } else {
+                    self.registers[rx] = 0;
+                    self.registers[0xF] = 0 // unset borrow flag
+                }
+            },
+            OpCode::ShiftRightX1(r) => {
+                let b = self.registers[r] % 2;
+                self.registers[0xF] = b;
+                self.registers[r] >>= 1;
+            },
+            OpCode::SubYX(rx, ry) => {
+                if self.registers[ry] >= self.registers[rx] {
+                    self.registers[rx] = self.registers[ry] - self.registers[rx];
+                    self.registers[0xF] = 1 // set borrow flag
+                } else {
+                    self.registers[rx] = 0;
+                    self.registers[0xF] = 0 // unset borrow flag
+                }
+            },
+            OpCode::ShiftLeftX1(r) => {
+                let b = self.registers[r] & 0x80; // take the first bit
+                self.registers[0xF] = b;
+                self.registers[r] <<= 1;
+            },
+            OpCode::SkipNotEqXY(rx, ry) => {
+                if self.registers[rx] != self.registers[ry] {
+                    self.opcode += 1
+                }
+            },
+            OpCode::SetIR(n) => self.index_register = n,
+            OpCode::Flow(n) => self.pc = usize::from(self.registers[0] + n),
+            OpCode::RandX(r, n) => {
+                let mut rng = rand::thread_rng();
+            }
             _ => println!("Not implemented: {:?}", opcode),
         }
         true
