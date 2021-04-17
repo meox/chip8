@@ -4,11 +4,11 @@
 // - https://en.wikipedia.org/wiki/CHIP-8
 // - http://devernay.free.fr/hacks/chip8/C8TECH10.HTM
 
+use rand::Rng;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::render::WindowCanvas;
-use rand::Rng;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
@@ -236,33 +236,33 @@ impl Machine {
     fn exec(&mut self) -> bool {
         let opcode = parse_opcode(self.fetch_opcode());
         match opcode {
-            OpCode::Clear => self.gfx = [0; GFX_HEIGHT*GFX_WIDTH],
+            OpCode::Clear => self.gfx = [0; GFX_HEIGHT * GFX_WIDTH],
             OpCode::Return => {
                 let v = self.stack[self.sp];
                 self.pc = usize::from(v);
                 self.sp -= 1;
-            },
+            }
             OpCode::JumpTo(n) => self.pc = usize::from(n),
             OpCode::Call(n) => {
                 self.stack[self.sp] = self.pc;
                 self.sp += 1;
                 self.pc = usize::from(n);
-            },
+            }
             OpCode::SkipEq(r, n) => {
                 if self.registers[r] == n {
                     self.pc += 1
                 }
-            },
+            }
             OpCode::SkipNotEq(r, n) => {
                 if self.registers[r] != n {
                     self.pc += 1
                 }
-            },
+            }
             OpCode::SkipEqXY(rx, ry) => {
                 if self.registers[rx] == self.registers[ry] {
                     self.pc += 1
                 }
-            },
+            }
             OpCode::SetX(r, n) => self.registers[r] = n,
             OpCode::AddX(r, n) => self.registers[r] = (self.registers[r] + n) & 0x00FF, // force cast to 8bit
             OpCode::AssignXY(rx, ry) => self.registers[rx] = self.registers[ry],
@@ -277,7 +277,7 @@ impl Machine {
                     self.registers[0xF] = 0 // unset carry flag
                 }
                 self.registers[rx] &= 0x00FF;
-            },
+            }
             OpCode::SubXY(rx, ry) => {
                 if self.registers[rx] >= self.registers[ry] {
                     self.registers[rx] -= self.registers[ry];
@@ -286,12 +286,12 @@ impl Machine {
                     self.registers[rx] = 0;
                     self.registers[0xF] = 0 // unset borrow flag
                 }
-            },
+            }
             OpCode::ShiftRightX1(r) => {
                 let b = self.registers[r] % 2;
                 self.registers[0xF] = b;
                 self.registers[r] >>= 1;
-            },
+            }
             OpCode::SubYX(rx, ry) => {
                 if self.registers[ry] >= self.registers[rx] {
                     self.registers[rx] = self.registers[ry] - self.registers[rx];
@@ -300,17 +300,17 @@ impl Machine {
                     self.registers[rx] = 0;
                     self.registers[0xF] = 0 // unset borrow flag
                 }
-            },
+            }
             OpCode::ShiftLeftX1(r) => {
                 let b = self.registers[r] & 0x80; // take the first bit
                 self.registers[0xF] = b;
                 self.registers[r] <<= 1;
-            },
+            }
             OpCode::SkipNotEqXY(rx, ry) => {
                 if self.registers[rx] != self.registers[ry] {
                     self.opcode += 1
                 }
-            },
+            }
             OpCode::SetIR(n) => self.index_register = n,
             OpCode::Flow(n) => self.pc = usize::from(self.registers[0] + n),
             OpCode::RandX(r, n) => {
