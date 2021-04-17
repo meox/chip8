@@ -41,6 +41,9 @@ struct Machine {
     opcode: u16,
     // program size
     program_size: usize,
+
+    // current key press
+    key_pressed: Option<u16>,
 }
 
 enum Timer {
@@ -84,13 +87,13 @@ enum OpCode {
     Flow(u16),                       // BNNN: PC = V0 + NNN (Jumps to the address NNN plus V0)
     RandX(Register, u16), // CXNN: Vx = rand() & NN (Sets VX to the result of a bitwise and operation on a random number (Typically: 0 to 255) and NN)
     Draw(Register, Register, u16), // DXYN: Draws a sprite at coordinate (Vx, Vy) that has a width of 8 pixels and a height of N+1 pixels. Each row of 8 pixels is read as bit-coded starting from memory location I
-    KeyEqX(Register), // EX9E: if(key() == Vx) Skips the next instruction if the key stored in VX is pressed. (Usually the next instruction is a jump to skip a code block)
-    KeyNotEqX(Register), // EXA1: if(key() != Vx) Skips the next instruction if the key stored in VX isn't pressed. (Usually the next instruction is a jump to skip a code block)
-    TimerX(Register),    // FX07: Vx = get_delay()
-    KeyPressX(Register), // FX0A: Vx = get_key()
-    SetDelayTimer(Register), // FX15: delay_timer(Vx) Sets the delay timer to VX
-    SetSoundTimer(Register), // FX18: sound_timer(Vx) Sets the sound timer to VX
-    MemAdd(Register),    // FX1E: I += Vx Adds VX to I. VF is not affected
+    KeyPressedX(Register), // EX9E: if(key() == Vx) Skips the next instruction if the key stored in VX is pressed. (Usually the next instruction is a jump to skip a code block)
+    KeyNotPressedX(Register), // EXA1: if(key() != Vx) Skips the next instruction if the key stored in VX isn't pressed. (Usually the next instruction is a jump to skip a code block)
+    TimerX(Register),         // FX07: Vx = get_delay()
+    KeyPressX(Register),      // FX0A: Vx = get_key()
+    SetDelayTimer(Register),  // FX15: delay_timer(Vx) Sets the delay timer to VX
+    SetSoundTimer(Register),  // FX18: sound_timer(Vx) Sets the sound timer to VX
+    MemAdd(Register),         // FX1E: I += Vx Adds VX to I. VF is not affected
     SpriteX(Register), // FX29: I = sprite_addr[Vx] (Sets I to the location of the sprite for the character in VX. Characters 0-F (in hexadecimal) are represented by a 4x5 font)
     BCD(Register),     // FX33: set_BCD(Vx)
     DumpX(Register),   // FX55: Stores V0 to VX (including VX) in memory starting at address I
@@ -137,8 +140,8 @@ fn parse_opcode(opcode: u16) -> OpCode {
         (0xB, _) => OpCode::Flow(opcode & 0x0FFF),
         (0xC, _) => OpCode::RandX(extractX(opcode), opcode & 0x00FF),
         (0xD, _) => OpCode::Draw(extractX(opcode), extractY(opcode), opcode & 0x000F),
-        (0xE, 9) => OpCode::KeyEqX(extractX(opcode)),
-        (0xE, 1) => OpCode::KeyNotEqX(extractX(opcode)),
+        (0xE, 9) => OpCode::KeyPressedX(extractX(opcode)),
+        (0xE, 1) => OpCode::KeyNotPressedX(extractX(opcode)),
         (0xF, _) => {
             let z = opcode & 0x00F0;
             match (z, selector) {
@@ -173,6 +176,7 @@ impl Machine {
             keys: [0; 16],
             opcode: 0,
             program_size: 0,
+            key_pressed: None,
         };
     }
 
@@ -233,6 +237,28 @@ impl Machine {
         return self.opcode;
     }
 
+    fn set_key_pressed(&mut self, k: Option<sdl2::keyboard::Keycode>) {
+        match k {
+            Some(sdl2::keyboard::Keycode::Num0) => self.key_pressed = Some(0),
+            Some(sdl2::keyboard::Keycode::Num1) => self.key_pressed = Some(1),
+            Some(sdl2::keyboard::Keycode::Num2) => self.key_pressed = Some(2),
+            Some(sdl2::keyboard::Keycode::Num3) => self.key_pressed = Some(3),
+            Some(sdl2::keyboard::Keycode::Num4) => self.key_pressed = Some(4),
+            Some(sdl2::keyboard::Keycode::Num5) => self.key_pressed = Some(5),
+            Some(sdl2::keyboard::Keycode::Num6) => self.key_pressed = Some(6),
+            Some(sdl2::keyboard::Keycode::Num7) => self.key_pressed = Some(7),
+            Some(sdl2::keyboard::Keycode::Num8) => self.key_pressed = Some(8),
+            Some(sdl2::keyboard::Keycode::Num9) => self.key_pressed = Some(9),
+            Some(sdl2::keyboard::Keycode::A) => self.key_pressed = Some(10),
+            Some(sdl2::keyboard::Keycode::B) => self.key_pressed = Some(11),
+            Some(sdl2::keyboard::Keycode::C) => self.key_pressed = Some(12),
+            Some(sdl2::keyboard::Keycode::D) => self.key_pressed = Some(13),
+            Some(sdl2::keyboard::Keycode::E) => self.key_pressed = Some(14),
+            Some(sdl2::keyboard::Keycode::F) => self.key_pressed = Some(15),
+            _ => self.key_pressed = None,
+        }
+    }
+
     fn exec(&mut self) -> bool {
         let opcode = parse_opcode(self.fetch_opcode());
         match opcode {
@@ -250,71 +276,122 @@ impl Machine {
             }
             OpCode::SkipEq(r, n) => {
                 if self.registers[r] == n {
-                    self.pc += 1
+                    self.pc += 1;
                 }
+                self.pc += 1;
             }
             OpCode::SkipNotEq(r, n) => {
                 if self.registers[r] != n {
-                    self.pc += 1
+                    self.pc += 1;
                 }
+                self.pc += 1;
             }
             OpCode::SkipEqXY(rx, ry) => {
                 if self.registers[rx] == self.registers[ry] {
-                    self.pc += 1
+                    self.pc += 1;
                 }
+                self.pc += 1;
             }
-            OpCode::SetX(r, n) => self.registers[r] = n,
-            OpCode::AddX(r, n) => self.registers[r] = (self.registers[r] + n) & 0x00FF, // force cast to 8bit
-            OpCode::AssignXY(rx, ry) => self.registers[rx] = self.registers[ry],
-            OpCode::OrXY(rx, ry) => self.registers[rx] |= self.registers[ry],
-            OpCode::AndXY(rx, ry) => self.registers[rx] &= self.registers[ry],
-            OpCode::XorXY(rx, ry) => self.registers[rx] ^= self.registers[ry],
+            OpCode::SetX(r, n) => {
+                self.registers[r] = n;
+                self.pc += 1;
+            }
+            OpCode::AddX(r, n) => {
+                self.registers[r] = (self.registers[r] + n) & 0x00FF; // force cast to 8bit
+                self.pc += 1;
+            }
+            OpCode::AssignXY(rx, ry) => {
+                self.registers[rx] = self.registers[ry];
+                self.pc += 1;
+            }
+            OpCode::OrXY(rx, ry) => {
+                self.registers[rx] |= self.registers[ry];
+                self.pc += 1;
+            }
+            OpCode::AndXY(rx, ry) => {
+                self.registers[rx] &= self.registers[ry];
+                self.pc += 1;
+            }
+            OpCode::XorXY(rx, ry) => {
+                self.registers[rx] ^= self.registers[ry];
+                self.pc += 1;
+            }
             OpCode::AddXY(rx, ry) => {
                 self.registers[rx] += self.registers[ry];
                 if self.registers[rx] > 255 {
-                    self.registers[0xF] = 1 // set carry flag
+                    self.registers[0xF] = 1; // set carry flag
                 } else {
-                    self.registers[0xF] = 0 // unset carry flag
+                    self.registers[0xF] = 0; // unset carry flag
                 }
                 self.registers[rx] &= 0x00FF;
+                self.pc += 1;
             }
             OpCode::SubXY(rx, ry) => {
                 if self.registers[rx] >= self.registers[ry] {
                     self.registers[rx] -= self.registers[ry];
-                    self.registers[0xF] = 1 // set borrow flag
+                    self.registers[0xF] = 1; // set borrow flag
                 } else {
                     self.registers[rx] = 0;
-                    self.registers[0xF] = 0 // unset borrow flag
+                    self.registers[0xF] = 0; // unset borrow flag
                 }
+                self.pc += 1;
             }
             OpCode::ShiftRightX1(r) => {
                 let b = self.registers[r] % 2;
                 self.registers[0xF] = b;
                 self.registers[r] >>= 1;
+                self.pc += 1;
             }
             OpCode::SubYX(rx, ry) => {
                 if self.registers[ry] >= self.registers[rx] {
                     self.registers[rx] = self.registers[ry] - self.registers[rx];
-                    self.registers[0xF] = 1 // set borrow flag
+                    self.registers[0xF] = 1; // set borrow flag
                 } else {
                     self.registers[rx] = 0;
-                    self.registers[0xF] = 0 // unset borrow flag
+                    self.registers[0xF] = 0; // unset borrow flag
                 }
+                self.pc += 1;
             }
             OpCode::ShiftLeftX1(r) => {
                 let b = self.registers[r] & 0x80; // take the first bit
                 self.registers[0xF] = b;
                 self.registers[r] <<= 1;
+                self.pc += 1;
             }
             OpCode::SkipNotEqXY(rx, ry) => {
                 if self.registers[rx] != self.registers[ry] {
-                    self.opcode += 1
+                    self.opcode += 1;
                 }
+                self.pc += 1;
             }
             OpCode::SetIR(n) => self.index_register = n,
             OpCode::Flow(n) => self.pc = usize::from(self.registers[0] + n),
             OpCode::RandX(r, n) => {
                 let mut rng = rand::thread_rng();
+                self.registers[r] = rng.gen::<u16>() & n;
+                self.pc += 1;
+            }
+            OpCode::KeyPressedX(r) => {
+                let k = usize::from(self.registers[r]);
+                if self.keys[k] > 0 {
+                    // if pressed
+                    self.pc += 1;
+                }
+                self.pc += 1;
+            }
+            OpCode::KeyNotPressedX(r) => {
+                let k = usize::from(self.registers[r]);
+                if self.keys[k] == 0 {
+                    // if not pressed
+                    self.pc += 1
+                }
+                self.pc += 1
+            }
+            OpCode::KeyPressX(r) => {
+                if let Some(k) = self.key_pressed {
+                    self.registers[r] = k;
+                    self.pc += 1;
+                }
             }
             _ => println!("Not implemented: {:?}", opcode),
         }
@@ -403,6 +480,8 @@ fn main() -> io::Result<()> {
                 } => {
                     break 'running;
                 }
+                Event::KeyDown { keycode: kcode, .. } => m.set_key_pressed(kcode),
+                Event::KeyUp { .. } => m.set_key_pressed(None),
                 _ => {}
             }
         }
