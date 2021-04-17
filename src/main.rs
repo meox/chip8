@@ -35,8 +35,7 @@ struct Machine {
     // stack
     stack: Vec<usize>,
     sp: usize,
-    // input key
-    keys: [u8; 16],
+
     // current opcode
     opcode: u16,
     // program size
@@ -101,14 +100,20 @@ enum OpCode {
     Invalid,
 }
 
-fn extractX(opcode: u16) -> Register {
+fn extract_x(opcode: u16) -> Register {
     usize::from((opcode & 0x0F00) >> 8)
 }
-fn extractY(opcode: u16) -> Register {
+fn extract_y(opcode: u16) -> Register {
     usize::from((opcode & 0x00F0) >> 4)
 }
 
-fn parse_opcode(opcode: u16) -> OpCode {
+fn parse_opcode(op: Option<u16>) -> OpCode {
+    println!("parse_opcode: op = {:?}", op);
+    if op == None {
+        return OpCode::Invalid;
+    }
+
+    let opcode = op.unwrap();
     if opcode == 0x00E0 {
         return OpCode::Clear;
     }
@@ -116,44 +121,46 @@ fn parse_opcode(opcode: u16) -> OpCode {
         return OpCode::Return;
     }
 
-    let class = opcode & 0xF000;
+    let class = (opcode & 0xF000) >> 12;
     let selector = opcode & 0x000F;
+
+    println!("class = {}, selector = {}", class, selector);
     match (class, selector) {
         (1, _) => OpCode::JumpTo(opcode & 0x0FFF),
         (2, _) => OpCode::Call(opcode & 0x0FFF),
-        (3, _) => OpCode::SkipEq(extractX(opcode), opcode & 0x00FF),
-        (4, _) => OpCode::SkipNotEq(extractX(opcode), opcode & 0x00FF),
-        (5, 0) => OpCode::SkipEqXY(extractX(opcode), extractY(opcode)),
-        (6, _) => OpCode::SetX(extractX(opcode), opcode & 0x00FF),
-        (7, _) => OpCode::AddX(extractX(opcode), opcode & 0x00FF),
-        (8, 0) => OpCode::AssignXY(extractX(opcode), extractY(opcode)),
-        (8, 1) => OpCode::OrXY(extractX(opcode), extractY(opcode)),
-        (8, 2) => OpCode::AndXY(extractX(opcode), extractY(opcode)),
-        (8, 3) => OpCode::XorXY(extractX(opcode), extractY(opcode)),
-        (8, 4) => OpCode::AddXY(extractX(opcode), extractY(opcode)),
-        (8, 5) => OpCode::SubXY(extractX(opcode), extractY(opcode)),
-        (8, 6) => OpCode::ShiftRightX1(extractX(opcode)),
-        (8, 7) => OpCode::SubYX(extractX(opcode), extractY(opcode)),
-        (8, 0xE) => OpCode::ShiftLeftX1(extractX(opcode)),
-        (9, 0) => OpCode::SkipNotEqXY(extractX(opcode), extractY(opcode)),
+        (3, _) => OpCode::SkipEq(extract_x(opcode), opcode & 0x00FF),
+        (4, _) => OpCode::SkipNotEq(extract_x(opcode), opcode & 0x00FF),
+        (5, 0) => OpCode::SkipEqXY(extract_x(opcode), extract_y(opcode)),
+        (6, _) => OpCode::SetX(extract_x(opcode), opcode & 0x00FF),
+        (7, _) => OpCode::AddX(extract_x(opcode), opcode & 0x00FF),
+        (8, 0) => OpCode::AssignXY(extract_x(opcode), extract_y(opcode)),
+        (8, 1) => OpCode::OrXY(extract_x(opcode), extract_y(opcode)),
+        (8, 2) => OpCode::AndXY(extract_x(opcode), extract_y(opcode)),
+        (8, 3) => OpCode::XorXY(extract_x(opcode), extract_y(opcode)),
+        (8, 4) => OpCode::AddXY(extract_x(opcode), extract_y(opcode)),
+        (8, 5) => OpCode::SubXY(extract_x(opcode), extract_y(opcode)),
+        (8, 6) => OpCode::ShiftRightX1(extract_x(opcode)),
+        (8, 7) => OpCode::SubYX(extract_x(opcode), extract_y(opcode)),
+        (8, 0xE) => OpCode::ShiftLeftX1(extract_x(opcode)),
+        (9, 0) => OpCode::SkipNotEqXY(extract_x(opcode), extract_y(opcode)),
         (0xA, _) => OpCode::SetIR(opcode & 0x0FFF),
         (0xB, _) => OpCode::Flow(opcode & 0x0FFF),
-        (0xC, _) => OpCode::RandX(extractX(opcode), opcode & 0x00FF),
-        (0xD, _) => OpCode::Draw(extractX(opcode), extractY(opcode), opcode & 0x000F),
-        (0xE, 9) => OpCode::KeyPressedX(extractX(opcode)),
-        (0xE, 1) => OpCode::KeyNotPressedX(extractX(opcode)),
+        (0xC, _) => OpCode::RandX(extract_x(opcode), opcode & 0x00FF),
+        (0xD, _) => OpCode::Draw(extract_x(opcode), extract_y(opcode), opcode & 0x000F),
+        (0xE, 9) => OpCode::KeyPressedX(extract_x(opcode)),
+        (0xE, 1) => OpCode::KeyNotPressedX(extract_x(opcode)),
         (0xF, _) => {
             let z = opcode & 0x00F0;
             match (z, selector) {
-                (0, 7) => OpCode::TimerX(extractX(opcode)),
-                (0, 0xA) => OpCode::KeyPressX(extractX(opcode)),
-                (1, 5) => OpCode::SetDelayTimer(extractX(opcode)),
-                (1, 8) => OpCode::SetSoundTimer(extractX(opcode)),
-                (1, 0xE) => OpCode::MemAdd(extractX(opcode)),
-                (2, 9) => OpCode::SpriteX(extractX(opcode)),
-                (3, 3) => OpCode::BCD(extractX(opcode)),
-                (5, 5) => OpCode::DumpX(extractX(opcode)),
-                (6, 5) => OpCode::LoadX(extractX(opcode)),
+                (0, 7) => OpCode::TimerX(extract_x(opcode)),
+                (0, 0xA) => OpCode::KeyPressX(extract_x(opcode)),
+                (1, 5) => OpCode::SetDelayTimer(extract_x(opcode)),
+                (1, 8) => OpCode::SetSoundTimer(extract_x(opcode)),
+                (1, 0xE) => OpCode::MemAdd(extract_x(opcode)),
+                (2, 9) => OpCode::SpriteX(extract_x(opcode)),
+                (3, 3) => OpCode::BCD(extract_x(opcode)),
+                (5, 5) => OpCode::DumpX(extract_x(opcode)),
+                (6, 5) => OpCode::LoadX(extract_x(opcode)),
                 _ => OpCode::Invalid,
             }
         }
@@ -173,7 +180,6 @@ impl Machine {
             sound_timer: u16::MAX,
             stack: Vec::new(),
             sp: 0,
-            keys: [0; 16],
             opcode: 0,
             program_size: 0,
             key_pressed: None,
@@ -191,17 +197,13 @@ impl Machine {
         self.load_fontset();
     }
 
-    fn VS(self) -> u16 {
-        self.registers[15]
-    }
-
     fn set_timer(&mut self, t: Timer, v: u16) {
         match t {
             Timer::Sound => self.sound_timer = v,
             Timer::Delay => self.delay_timer = v,
         }
     }
-    fn get_timer(self, t: Timer) -> u16 {
+    fn get_timer(&self, t: Timer) -> u16 {
         match t {
             Timer::Sound => self.sound_timer,
             Timer::Delay => self.delay_timer,
@@ -212,9 +214,7 @@ impl Machine {
         let mut f = File::open(file)?;
         let mut buffer = Vec::new();
         // read the whole file
-        let program_size = f.read_to_end(&mut buffer)?;
-        self.program_size = program_size;
-
+        f.read_to_end(&mut buffer)?;
         self.load_program(buffer);
         Ok(())
     }
@@ -226,15 +226,21 @@ impl Machine {
             self.memory[PROGRAM_START_ADDRESS + i] = d;
             i += 1;
         }
+        self.program_size = i;
+        println!("program_size= {}", self.program_size);
     }
 
-    fn fetch_opcode(&mut self) -> u16 {
+    fn fetch_opcode(&mut self) -> Option<u16> {
+        println!(
+            "fetch_opcode: PC = {} *** {}",
+            self.pc,
+            PROGRAM_START_ADDRESS + self.program_size
+        );
         if self.pc > PROGRAM_START_ADDRESS + self.program_size {
-            return 0;
+            return None;
         }
         self.opcode = u16::from(self.memory[self.pc]) << 8 | u16::from(self.memory[self.pc + 1]);
-        self.pc += 2;
-        return self.opcode;
+        Some(self.opcode)
     }
 
     fn set_key_pressed(&mut self, k: Option<sdl2::keyboard::Keycode>) {
@@ -259,9 +265,13 @@ impl Machine {
         }
     }
 
-    fn exec(&mut self) -> bool {
+    fn exec_single(&mut self) -> bool {
         let opcode = parse_opcode(self.fetch_opcode());
+        println!("OPCODE = {:?}", opcode);
+        let opcode_mem_size = 2;
+
         match opcode {
+            OpCode::Invalid => return false,
             OpCode::Clear => self.gfx = [0; GFX_HEIGHT * GFX_WIDTH],
             OpCode::Return => {
                 let v = self.stack[self.sp];
@@ -276,45 +286,45 @@ impl Machine {
             }
             OpCode::SkipEq(r, n) => {
                 if self.registers[r] == n {
-                    self.pc += 1;
+                    self.pc += opcode_mem_size;
                 }
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::SkipNotEq(r, n) => {
                 if self.registers[r] != n {
-                    self.pc += 1;
+                    self.pc += opcode_mem_size;
                 }
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::SkipEqXY(rx, ry) => {
                 if self.registers[rx] == self.registers[ry] {
-                    self.pc += 1;
+                    self.pc += opcode_mem_size;
                 }
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::SetX(r, n) => {
                 self.registers[r] = n;
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::AddX(r, n) => {
                 self.registers[r] = (self.registers[r] + n) & 0x00FF; // force cast to 8bit
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::AssignXY(rx, ry) => {
                 self.registers[rx] = self.registers[ry];
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::OrXY(rx, ry) => {
                 self.registers[rx] |= self.registers[ry];
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::AndXY(rx, ry) => {
                 self.registers[rx] &= self.registers[ry];
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::XorXY(rx, ry) => {
                 self.registers[rx] ^= self.registers[ry];
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::AddXY(rx, ry) => {
                 self.registers[rx] += self.registers[ry];
@@ -324,7 +334,7 @@ impl Machine {
                     self.registers[0xF] = 0; // unset carry flag
                 }
                 self.registers[rx] &= 0x00FF;
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::SubXY(rx, ry) => {
                 if self.registers[rx] >= self.registers[ry] {
@@ -334,13 +344,13 @@ impl Machine {
                     self.registers[rx] = 0;
                     self.registers[0xF] = 0; // unset borrow flag
                 }
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::ShiftRightX1(r) => {
                 let b = self.registers[r] % 2;
                 self.registers[0xF] = b;
                 self.registers[r] >>= 1;
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::SubYX(rx, ry) => {
                 if self.registers[ry] >= self.registers[rx] {
@@ -350,50 +360,69 @@ impl Machine {
                     self.registers[rx] = 0;
                     self.registers[0xF] = 0; // unset borrow flag
                 }
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::ShiftLeftX1(r) => {
                 let b = self.registers[r] & 0x80; // take the first bit
                 self.registers[0xF] = b;
                 self.registers[r] <<= 1;
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::SkipNotEqXY(rx, ry) => {
                 if self.registers[rx] != self.registers[ry] {
                     self.opcode += 1;
                 }
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::SetIR(n) => self.index_register = n,
             OpCode::Flow(n) => self.pc = usize::from(self.registers[0] + n),
             OpCode::RandX(r, n) => {
                 let mut rng = rand::thread_rng();
                 self.registers[r] = rng.gen::<u16>() & n;
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::KeyPressedX(r) => {
-                let k = usize::from(self.registers[r]);
-                if self.keys[k] > 0 {
-                    // if pressed
-                    self.pc += 1;
+                if let Some(k) = self.key_pressed {
+                    if k == self.registers[r] {
+                        self.pc += opcode_mem_size;
+                    }
                 }
-                self.pc += 1;
+                self.pc += opcode_mem_size;
             }
             OpCode::KeyNotPressedX(r) => {
-                let k = usize::from(self.registers[r]);
-                if self.keys[k] == 0 {
-                    // if not pressed
-                    self.pc += 1
+                if let Some(k) = self.key_pressed {
+                    if k != self.registers[r] {
+                        self.pc += opcode_mem_size;
+                    }
                 }
-                self.pc += 1
+                self.pc += opcode_mem_size
             }
             OpCode::KeyPressX(r) => {
                 if let Some(k) = self.key_pressed {
                     self.registers[r] = k;
-                    self.pc += 1;
+                    self.pc += opcode_mem_size;
                 }
             }
-            _ => println!("Not implemented: {:?}", opcode),
+            OpCode::TimerX(r) => {
+                self.registers[r] = self.get_timer(Timer::Delay);
+                self.pc += opcode_mem_size;
+            }
+            OpCode::SetDelayTimer(r) => {
+                self.set_timer(Timer::Delay, self.registers[r]);
+                self.pc += opcode_mem_size;
+            }
+            OpCode::SetSoundTimer(r) => {
+                self.set_timer(Timer::Sound, self.registers[r]);
+                self.pc += opcode_mem_size;
+            }
+            OpCode::MemAdd(r) => {
+                self.index_register += self.registers[r];
+                self.pc += opcode_mem_size;
+            }
+            _ => {
+                println!("Not implemented: {:?}", opcode);
+                return false;
+            }
         }
         true
     }
@@ -510,7 +539,7 @@ mod tests {
         m.init();
         m.load_program(vec![0xA2, 0xF0]);
 
-        assert_eq!(0xA2F0, m.fetch_opcode());
+        assert_eq!(0xA2F0, m.fetch_opcode().unwrap());
     }
 
     #[test]
@@ -525,7 +554,8 @@ mod tests {
             0x71, 0x02, // V1 = 2
             0x80, 0x14, // V0 += V1
         ]);
-        m.exec();
+
+        while m.exec_single() {}
 
         assert_eq!(7, m.registers[0]);
     }
