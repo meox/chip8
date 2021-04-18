@@ -130,7 +130,6 @@ fn parse_opcode(op: Option<u16>) -> OpCode {
     let class = (opcode & 0xF000) >> 12;
     let selector = opcode & 0x000F;
 
-    println!("class = {}, selector = {}", class, selector);
     match (class, selector) {
         (1, _) => OpCode::JumpTo(opcode & 0x0FFF),
         (2, _) => OpCode::Call(opcode & 0x0FFF),
@@ -156,8 +155,8 @@ fn parse_opcode(op: Option<u16>) -> OpCode {
         (0xE, 9) => OpCode::KeyPressedX(extract_x(opcode)),
         (0xE, 1) => OpCode::KeyNotPressedX(extract_x(opcode)),
         (0xF, _) => {
-            let z = (opcode & 0x00F0) >> 4;
-            match (z, selector) {
+            let sub_group = (opcode & 0x00F0) >> 4;
+            match (sub_group, selector) {
                 (0, 7) => OpCode::TimerX(extract_x(opcode)),
                 (0, 0xA) => OpCode::KeyPressX(extract_x(opcode)),
                 (1, 5) => OpCode::SetDelayTimer(extract_x(opcode)),
