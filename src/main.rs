@@ -352,7 +352,7 @@ impl Machine {
                     self.registers[rx] -= self.registers[ry];
                     self.registers[0xF] = 1; // set borrow flag
                 } else {
-                    self.registers[rx] = 0;
+                    self.registers[rx] = 256 - (self.registers[ry] - self.registers[rx]);
                     self.registers[0xF] = 0; // unset borrow flag
                 }
                 self.pc_inc();
