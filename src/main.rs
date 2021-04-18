@@ -453,10 +453,18 @@ impl Machine {
                 self.pc_inc();
             }
             OpCode::Draw(rx, ry, n) => {
-                let x = self.registers[rx];
-                let y = self.registers[ry];
+                let x = usize::from(self.registers[rx]);
+                let y = usize::from(self.registers[ry]);
+                //let p = usize::from(x);
                 self.draw_flag = true;
-
+                for h in 0..n {
+                    let byte_row = self.memory[usize::from(self.index_register + h)];
+                    let p_video = (y + usize::from(h)) * GFX_WIDTH + x;
+                    let byte_video = self.gfx[p_video];
+                    let r = byte_row ^ byte_video;
+                    self.registers[0xF] = if r != byte_row { 1 } else { 0 };
+                    self.gfx[p_video] = r;
+                }
                 self.pc_inc();
             }
             _ => {
