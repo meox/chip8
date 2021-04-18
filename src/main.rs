@@ -173,7 +173,7 @@ fn parse_opcode(op: Option<u16>) -> OpCode {
     }
 }
 
-fn convert_tobits(mut b: u8) -> [u8; 8] {
+fn convert_to_bits(mut b: u8) -> [u8; 8] {
     let mut r: [u8; 8] = [0; 8];
     for x in 0..8 {
         let bit = b & 0x01;
@@ -181,6 +181,21 @@ fn convert_tobits(mut b: u8) -> [u8; 8] {
         r[7 - x] = bit;
     }
 
+    r
+}
+
+fn convert_to_bcd(mut d: u16) -> [u8; 3] {
+    let mut r: [u8; 3] = [0; 3];
+    let mut i = 2;
+    while d > 0 {
+        let q = d % 10;
+        d = (d - q) / 10;
+        r[i] = u8::try_from(q).unwrap();
+        if i == 0 {
+            break
+        }
+        i -= 1;
+    }
     r
 }
 
@@ -471,7 +486,7 @@ impl Machine {
                 self.registers[0xF] = 0;
                 for h in 0..n {
                     let byte_row = self.memory[usize::from(self.index_register + h)];
-                    let bits_row = convert_tobits(byte_row);
+                    let bits_row = convert_to_bits(byte_row);
 
                     for k in 0..8 {
                         let pos_video = (y + usize::from(h)) * GFX_WIDTH + (x + k);
@@ -482,6 +497,15 @@ impl Machine {
                         self.gfx[pos_video] ^= bits_row[k];
                     }
                 }
+                self.pc_inc();
+            }
+            OpCode::BCD(r) => {
+                let ds = convert_to_bcd(self.registers[r]);
+
+                self.memory[usize::from(self.index_register)] = ds[0];
+                self.memory[usize::from(self.index_register + 1)] = ds[1];
+                self.memory[usize::from(self.index_register + 2)] = ds[2];
+
                 self.pc_inc();
             }
             _ => {
@@ -652,17 +676,25 @@ mod tests {
     }
 
     #[test]
-    fn convert_tobits_simple() {
-        assert_eq!([1, 0, 0, 0, 0, 0, 0, 0], convert_tobits(0x80));
-        assert_eq!([1, 1, 0, 0, 0, 0, 0, 0], convert_tobits(0xC0));
-        assert_eq!([1, 1, 1, 0, 0, 0, 0, 0], convert_tobits(0xE0));
-        assert_eq!([1, 1, 1, 1, 0, 0, 0, 0], convert_tobits(0xF0));
-        assert_eq!([1, 1, 1, 1, 1, 0, 0, 0], convert_tobits(0xF8));
-        assert_eq!([1, 1, 1, 1, 1, 1, 0, 0], convert_tobits(0xFC));
-        assert_eq!([1, 1, 1, 1, 1, 1, 1, 0], convert_tobits(0xFE));
-        assert_eq!([1, 1, 1, 1, 1, 1, 1, 1], convert_tobits(0xFF));
+    fn convert_tobits_tests() {
+        assert_eq!([1, 0, 0, 0, 0, 0, 0, 0], convert_to_bits(0x80));
+        assert_eq!([1, 1, 0, 0, 0, 0, 0, 0], convert_to_bits(0xC0));
+        assert_eq!([1, 1, 1, 0, 0, 0, 0, 0], convert_to_bits(0xE0));
+        assert_eq!([1, 1, 1, 1, 0, 0, 0, 0], convert_to_bits(0xF0));
+        assert_eq!([1, 1, 1, 1, 1, 0, 0, 0], convert_to_bits(0xF8));
+        assert_eq!([1, 1, 1, 1, 1, 1, 0, 0], convert_to_bits(0xFC));
+        assert_eq!([1, 1, 1, 1, 1, 1, 1, 0], convert_to_bits(0xFE));
+        assert_eq!([1, 1, 1, 1, 1, 1, 1, 1], convert_to_bits(0xFF));
 
-        assert_eq!([1, 0, 1, 0, 1, 0, 1, 0], convert_tobits(0xAA));
-        assert_eq!([1, 1, 0, 0, 1, 0, 0, 1], convert_tobits(0xC9));
+        assert_eq!([1, 0, 1, 0, 1, 0, 1, 0], convert_to_bits(0xAA));
+        assert_eq!([1, 1, 0, 0, 1, 0, 0, 1], convert_to_bits(0xC9));
+    }
+
+    fn conver_tobcd_tests() {
+        assert_eq!([0, 0, 0], convert_to_bcd(0));
+        assert_eq!([0, 0, 7], convert_to_bcd(7));
+        assert_eq!([0, 2, 7], convert_to_bcd(27));
+        assert_eq!([1, 2, 7], convert_to_bcd(127));
+        assert_eq!([2, 5, 5], convert_to_bcd(255));
     }
 }
