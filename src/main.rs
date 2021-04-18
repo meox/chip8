@@ -18,7 +18,7 @@ use std::io::prelude::*;
 use std::time::Duration;
 
 // global constant
-const VIDEO_SCALING: usize = 8;
+const VIDEO_SCALING: usize = 10;
 const GFX_WIDTH: usize = 64;
 const GFX_HEIGHT: usize = 32;
 const PROGRAM_START_ADDRESS: usize = 0x200;
@@ -37,7 +37,6 @@ struct Machine {
     sound_timer: u16,
     // stack
     stack: Vec<usize>,
-    sp: usize,
 
     // current opcode
     opcode: u16,
@@ -196,7 +195,6 @@ impl Machine {
             delay_timer: u16::MAX,
             sound_timer: u16::MAX,
             stack: Vec::new(),
-            sp: 0,
             opcode: 0,
             program_size: 0,
             key_pressed: None,
@@ -544,7 +542,6 @@ fn render(canvas: &mut WindowCanvas, gfx: &[u8; GFX_HEIGHT * GFX_WIDTH]) {
                 let px = i32::try_from(x * VIDEO_SCALING).unwrap();
                 let py = i32::try_from(y * VIDEO_SCALING).unwrap();
 
-                //canvas.draw_point(Point::new(px, py));
                 canvas.fill_rect(Rect::new(px, py, s, s));
             }
         }
