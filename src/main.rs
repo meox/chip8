@@ -482,10 +482,6 @@ impl Machine {
 
                 self.pc_inc();
             }
-            _ => {
-                println!("Not implemented: {:?}", opcode);
-                return false;
-            }
         }
         true
     }
@@ -540,7 +536,10 @@ fn render(canvas: &mut WindowCanvas, gfx: &[u8; GFX_HEIGHT * GFX_WIDTH]) {
                 let px = i32::try_from(x * VIDEO_SCALING).unwrap();
                 let py = i32::try_from(y * VIDEO_SCALING).unwrap();
 
-                canvas.fill_rect(Rect::new(px, py, s, s));
+                match canvas.fill_rect(Rect::new(px, py, s, s)) {
+                    Ok(_) => {}
+                    _ => break
+                }
             }
         }
     }
@@ -608,6 +607,17 @@ fn main() -> io::Result<()> {
         // Render
         if alive && m.draw_flag {
             render(&mut canvas, &m.gfx);
+        }
+
+        // timer
+        if m.delay_timer > 0 {
+            m.delay_timer -= 1;
+        }
+        if m.sound_timer > 0 {
+            if m.sound_timer == 1 {
+                println!("BEEP");
+            }
+            m.sound_timer -= 1;
         }
 
         // Time management!
