@@ -1,4 +1,4 @@
-# chip8
+# Chip8
 A CHIP8 emulator written in Rust
 
 ## References
