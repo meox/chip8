@@ -15,6 +15,7 @@ use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 use std::time::Duration;
+use std::collections::HashMap;
 
 mod utils;
 
@@ -44,8 +45,8 @@ struct Machine {
     // program size
     program_size: usize,
 
-    // current key press
-    key_pressed: Option<u16>,
+    // current keys press state
+    keys: HashMap<u16, u8>,
 
     // draw flag
     draw_flag: bool,
@@ -186,7 +187,7 @@ impl Machine {
             stack: Vec::new(),
             opcode: 0,
             program_size: 0,
-            key_pressed: None,
+            keys: HashMap::new(),
             draw_flag: false,
         };
     }
@@ -248,25 +249,25 @@ impl Machine {
         Some(self.opcode)
     }
 
-    fn set_key_pressed(&mut self, k: Option<sdl2::keyboard::Keycode>) {
+    fn set_key_state(&mut self, k: sdl2::keyboard::Keycode, state: u8) -> Option<u8>{
         match k {
-            Some(sdl2::keyboard::Keycode::Num0) => self.key_pressed = Some(0),
-            Some(sdl2::keyboard::Keycode::Num1) => self.key_pressed = Some(1),
-            Some(sdl2::keyboard::Keycode::Num2) => self.key_pressed = Some(2),
-            Some(sdl2::keyboard::Keycode::Num3) => self.key_pressed = Some(3),
-            Some(sdl2::keyboard::Keycode::Num4) => self.key_pressed = Some(4),
-            Some(sdl2::keyboard::Keycode::Num5) => self.key_pressed = Some(5),
-            Some(sdl2::keyboard::Keycode::Num6) => self.key_pressed = Some(6),
-            Some(sdl2::keyboard::Keycode::Num7) => self.key_pressed = Some(7),
-            Some(sdl2::keyboard::Keycode::Num8) => self.key_pressed = Some(8),
-            Some(sdl2::keyboard::Keycode::Num9) => self.key_pressed = Some(9),
-            Some(sdl2::keyboard::Keycode::A) => self.key_pressed = Some(10),
-            Some(sdl2::keyboard::Keycode::B) => self.key_pressed = Some(11),
-            Some(sdl2::keyboard::Keycode::C) => self.key_pressed = Some(12),
-            Some(sdl2::keyboard::Keycode::D) => self.key_pressed = Some(13),
-            Some(sdl2::keyboard::Keycode::E) => self.key_pressed = Some(14),
-            Some(sdl2::keyboard::Keycode::F) => self.key_pressed = Some(15),
-            _ => self.key_pressed = None,
+            sdl2::keyboard::Keycode::Num0 => self.keys.insert(0, state),
+            sdl2::keyboard::Keycode::Num1 => self.keys.insert(1, state),
+            sdl2::keyboard::Keycode::Num2 => self.keys.insert(2, state),
+            sdl2::keyboard::Keycode::Num3 => self.keys.insert(3, state),
+            sdl2::keyboard::Keycode::Num4 => self.keys.insert(4, state),
+            sdl2::keyboard::Keycode::Num5 => self.keys.insert(5, state),
+            sdl2::keyboard::Keycode::Num6 => self.keys.insert(6, state),
+            sdl2::keyboard::Keycode::Num7 => self.keys.insert(7, state),
+            sdl2::keyboard::Keycode::Num8 => self.keys.insert(8, state),
+            sdl2::keyboard::Keycode::Num9 => self.keys.insert(9, state),
+            sdl2::keyboard::Keycode::A => self.keys.insert(10, state),
+            sdl2::keyboard::Keycode::B => self.keys.insert(11, state),
+            sdl2::keyboard::Keycode::C => self.keys.insert(12, state),
+            sdl2::keyboard::Keycode::D => self.keys.insert(13, state),
+            sdl2::keyboard::Keycode::E => self.keys.insert(14, state),
+            sdl2::keyboard::Keycode::F => self.keys.insert(15, state),
+            _ => None,
         }
     }
 
@@ -397,25 +398,26 @@ impl Machine {
                 self.pc_inc();
             }
             OpCode::KeyPressedX(r) => {
-                if let Some(k) = self.key_pressed {
-                    if k == self.registers[r] {
+                if let Some(v) = self.keys.get(&self.registers[r]) {
+                    if *v > 0 {
                         self.pc_inc();
                     }
                 }
                 self.pc_inc();
             }
             OpCode::KeyNotPressedX(r) => {
-                if let Some(k) = self.key_pressed {
-                    if k != self.registers[r] {
-                        self.pc_inc();
-                    }
+                match self.keys.get(&self.registers[r]) {
+                    Some(v) => if *v == 0 { self.pc_inc(); }
+                    None => self.pc_inc()
                 }
                 self.pc_inc();
             }
             OpCode::KeyPressX(r) => {
-                if let Some(k) = self.key_pressed {
-                    self.registers[r] = k;
-                    self.pc_inc();
+                for (k, v) in self.keys.clone() {
+                    if v > 0 {
+                        self.registers[r] = k;
+                        self.pc_inc();
+                    }
                 }
             }
             OpCode::TimerX(r) => {
@@ -554,7 +556,8 @@ fn main() -> io::Result<()> {
     m.init();
 
     // load program
-    let program_file = "data/test_opcode.ch8";
+    let program_file = "data/test_opcode.rom";
+    //let program_file = "data/pong.rom";
     match m.load_program_file(program_file) {
         Ok(_) => println!("program loaded!"),
         Err(e) => panic!("cannot load program file `{}`: {}", program_file, e),
@@ -593,8 +596,12 @@ fn main() -> io::Result<()> {
                 } => {
                     break 'running;
                 }
-                Event::KeyDown { keycode: kcode, .. } => m.set_key_pressed(kcode),
-                Event::KeyUp { .. } => m.set_key_pressed(None),
+                Event::KeyDown { keycode: Some(kcode), .. } => {
+                    m.set_key_state(kcode, 1);
+                }
+                Event::KeyUp { keycode: Some(kcode), .. } => {
+                    m.set_key_state(kcode, 0);
+                }
                 _ => {}
             }
         }
@@ -621,7 +628,7 @@ fn main() -> io::Result<()> {
         }
 
         // Time management!
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
+        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 120));
     }
 
     Ok(())
