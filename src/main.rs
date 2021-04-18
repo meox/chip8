@@ -358,9 +358,10 @@ impl Machine {
                 self.pc_inc();
             }
             OpCode::ShiftRightX1(r) => {
-                let b = self.registers[r] % 2;
+                let v = self.registers[r];
+                let b = v & 0x0001;
                 self.registers[0xF] = b;
-                self.registers[r] >>= 1;
+                self.registers[r] = (v >> 1) & 0x00FF;
                 self.pc_inc();
             }
             OpCode::SubYX(rx, ry) => {
@@ -374,9 +375,10 @@ impl Machine {
                 self.pc_inc();
             }
             OpCode::ShiftLeftX1(r) => {
-                let b = self.registers[r] & 0x80; // take the first bit
+                let v = self.registers[r];
+                let b = v & 0x80; // take the first bit
                 self.registers[0xF] = b;
-                self.registers[r] <<= 1;
+                self.registers[r] = (v << 1) & 0x00FF;
                 self.pc_inc();
             }
             OpCode::SkipNotEqXY(rx, ry) => {
