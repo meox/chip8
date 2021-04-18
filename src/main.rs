@@ -156,7 +156,7 @@ fn parse_opcode(op: Option<u16>) -> OpCode {
         (0xE, 9) => OpCode::KeyPressedX(extract_x(opcode)),
         (0xE, 1) => OpCode::KeyNotPressedX(extract_x(opcode)),
         (0xF, _) => {
-            let z = opcode & 0x00F0;
+            let z = (opcode & 0x00F0) >> 4;
             match (z, selector) {
                 (0, 7) => OpCode::TimerX(extract_x(opcode)),
                 (0, 0xA) => OpCode::KeyPressX(extract_x(opcode)),
@@ -535,7 +535,7 @@ fn render(canvas: &mut WindowCanvas, gfx: &[u8; GFX_HEIGHT * GFX_WIDTH]) {
     canvas.clear();
     canvas.set_draw_color(Color::RGB(255, 255, 255));
 
-    //let s = u32::try_from(VIDEO_SCALING).unwrap();
+    let s = u32::try_from(VIDEO_SCALING).unwrap();
 
     for y in 0..GFX_HEIGHT {
         for x in 0..GFX_WIDTH {
@@ -545,7 +545,7 @@ fn render(canvas: &mut WindowCanvas, gfx: &[u8; GFX_HEIGHT * GFX_WIDTH]) {
                 let py = i32::try_from(y * VIDEO_SCALING).unwrap();
 
                 //canvas.draw_point(Point::new(px, py));
-                canvas.fill_rect(Rect::new(px, py, 4, 4));
+                canvas.fill_rect(Rect::new(px, py, s, s));
             }
         }
     }
