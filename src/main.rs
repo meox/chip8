@@ -16,6 +16,8 @@ use std::io;
 use std::io::prelude::*;
 use std::time::Duration;
 use std::collections::HashMap;
+use std::borrow::Cow;
+use std::path::{Path, PathBuf};
 
 mod utils;
 
@@ -467,7 +469,10 @@ impl Machine {
                     let bits_row = utils::convert_to_bits(byte_row);
 
                     for k in 0..8 {
-                        let pos_video = (y + usize::from(h)) * GFX_WIDTH + (x + k);
+                        let curr_x = (x + k) % GFX_WIDTH;
+                        let curr_y = (y + usize::from(h)) % GFX_HEIGHT;
+
+                        let pos_video = curr_y * GFX_WIDTH + curr_x;
                         let pixel_video = self.gfx[pos_video];
                         if pixel_video == 1 && bits_row[k] == pixel_video {
                             self.registers[0xF] = 1
@@ -557,10 +562,13 @@ fn main() -> io::Result<()> {
     // init
     m.init();
 
+    let program_file: String = match std::env::args().nth(1) {
+        None => String::from("./data/test_opcode.rom"),
+        Some(s) => s,
+    };
+
     // load program
-    let program_file = "data/test_opcode.rom";
-    //let program_file = "data/pong.rom";
-    match m.load_program_file(program_file) {
+    match m.load_program_file(&program_file) {
         Ok(_) => println!("program loaded!"),
         Err(e) => panic!("cannot load program file `{}`: {}", program_file, e),
     }
@@ -588,6 +596,8 @@ fn main() -> io::Result<()> {
     let mut event_pump = sdl_context.event_pump().unwrap();
 
     'running: loop {
+        let mut refresh_window = false;
+
         // Handle events
         for event in event_pump.poll_iter() {
             match event {
@@ -604,6 +614,9 @@ fn main() -> io::Result<()> {
                 Event::KeyUp { keycode: Some(kcode), .. } => {
                     m.set_key_state(kcode, 0);
                 }
+                Event::Window {..} => {
+                    refresh_window = true;
+                }
                 _ => {}
             }
         }
@@ -614,7 +627,7 @@ fn main() -> io::Result<()> {
         }
 
         // Render
-        if alive && m.draw_flag {
+        if refresh_window || (alive && m.draw_flag) {
             render(&mut canvas, &m.gfx);
         }
 
