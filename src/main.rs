@@ -16,8 +16,6 @@ use std::io;
 use std::io::prelude::*;
 use std::time::Duration;
 use std::collections::HashMap;
-use std::borrow::Cow;
-use std::path::{Path, PathBuf};
 
 mod utils;
 
@@ -42,8 +40,6 @@ struct Machine {
     // stack
     stack: Vec<usize>,
 
-    // current opcode
-    opcode: u16,
     // program size
     program_size: usize,
 
@@ -117,7 +113,6 @@ fn extract_y(opcode: u16) -> Register {
 }
 
 fn parse_opcode(op: Option<u16>) -> OpCode {
-    println!("parse_opcode: op = {:?}", op);
     if op == None {
         return OpCode::Invalid;
     }
@@ -187,7 +182,6 @@ impl Machine {
             delay_timer: u16::MAX,
             sound_timer: u16::MAX,
             stack: Vec::new(),
-            opcode: 0,
             program_size: 0,
             keys: HashMap::new(),
             draw_flag: false,
@@ -235,46 +229,44 @@ impl Machine {
             i += 1;
         }
         self.program_size = i;
-        println!("program_size= {}", self.program_size);
     }
 
     fn fetch_opcode(&mut self) -> Option<u16> {
-        println!(
-            "fetch_opcode: PC = {} *** {}",
-            self.pc,
-            PROGRAM_START_ADDRESS + self.program_size
-        );
         if self.pc > PROGRAM_START_ADDRESS + self.program_size {
             return None;
         }
-        self.opcode = u16::from(self.memory[self.pc]) << 8 | u16::from(self.memory[self.pc + 1]);
-        Some(self.opcode)
+        let opcode = u16::from(self.memory[self.pc]) << 8 | u16::from(self.memory[self.pc + 1]);
+        Some(opcode)
     }
 
     fn set_key_state(&mut self, k: sdl2::keyboard::Keycode, state: u8) -> Option<u8>{
         match k {
-            sdl2::keyboard::Keycode::Num0 => self.keys.insert(0, state),
-            sdl2::keyboard::Keycode::Num1 => self.keys.insert(1, state),
-            sdl2::keyboard::Keycode::Num2 => self.keys.insert(2, state),
-            sdl2::keyboard::Keycode::Num3 => self.keys.insert(3, state),
-            sdl2::keyboard::Keycode::Num4 => self.keys.insert(4, state),
-            sdl2::keyboard::Keycode::Num5 => self.keys.insert(5, state),
-            sdl2::keyboard::Keycode::Num6 => self.keys.insert(6, state),
-            sdl2::keyboard::Keycode::Num7 => self.keys.insert(7, state),
-            sdl2::keyboard::Keycode::Num8 => self.keys.insert(8, state),
-            sdl2::keyboard::Keycode::Num9 => self.keys.insert(9, state),
-            sdl2::keyboard::Keycode::A => self.keys.insert(10, state),
-            sdl2::keyboard::Keycode::B => self.keys.insert(11, state),
-            sdl2::keyboard::Keycode::C => self.keys.insert(12, state),
-            sdl2::keyboard::Keycode::D => self.keys.insert(13, state),
-            sdl2::keyboard::Keycode::E => self.keys.insert(14, state),
-            sdl2::keyboard::Keycode::F => self.keys.insert(15, state),
+            sdl2::keyboard::Keycode::Num1 => self.keys.insert(0, state),
+            sdl2::keyboard::Keycode::Num2 => self.keys.insert(1, state),
+            sdl2::keyboard::Keycode::Num3 => self.keys.insert(2, state),
+            sdl2::keyboard::Keycode::Num4 => self.keys.insert(3, state),
+            
+            sdl2::keyboard::Keycode::Q => self.keys.insert(4, state),
+            sdl2::keyboard::Keycode::W => self.keys.insert(5, state),
+            sdl2::keyboard::Keycode::E => self.keys.insert(6, state),
+            sdl2::keyboard::Keycode::R => self.keys.insert(7, state),
+
+            sdl2::keyboard::Keycode::A => self.keys.insert(8, state),
+            sdl2::keyboard::Keycode::S => self.keys.insert(9, state),
+            sdl2::keyboard::Keycode::D => self.keys.insert(10, state),
+            sdl2::keyboard::Keycode::F => self.keys.insert(11, state),
+
+            sdl2::keyboard::Keycode::Z => self.keys.insert(12, state),
+            sdl2::keyboard::Keycode::X => self.keys.insert(13, state),
+            sdl2::keyboard::Keycode::C => self.keys.insert(14, state),
+            sdl2::keyboard::Keycode::V => self.keys.insert(15, state),
             _ => None,
         }
     }
 
     fn exec_single(&mut self) -> bool {
-        let opcode = parse_opcode(self.fetch_opcode());
+        let fetched = self.fetch_opcode();
+        let opcode = parse_opcode(fetched);
         println!("OPCODE = {:?}", opcode);
 
         self.draw_flag = false;
@@ -325,18 +317,22 @@ impl Machine {
             }
             OpCode::AssignXY(rx, ry) => {
                 self.registers[rx] = self.registers[ry];
+                self.registers[rx] &= 0x00FF;
                 self.pc_inc();
             }
             OpCode::OrXY(rx, ry) => {
                 self.registers[rx] |= self.registers[ry];
+                self.registers[rx] &= 0x00FF;
                 self.pc_inc();
             }
             OpCode::AndXY(rx, ry) => {
                 self.registers[rx] &= self.registers[ry];
+                self.registers[rx] &= 0x00FF;
                 self.pc_inc();
             }
             OpCode::XorXY(rx, ry) => {
                 self.registers[rx] ^= self.registers[ry];
+                self.registers[rx] &= 0x00FF;
                 self.pc_inc();
             }
             OpCode::AddXY(rx, ry) => {
@@ -357,6 +353,7 @@ impl Machine {
                     self.registers[rx] = 256 - (self.registers[ry] - self.registers[rx]);
                     self.registers[0xF] = 0; // unset borrow flag
                 }
+                self.registers[rx] &= 0x00FF;
                 self.pc_inc();
             }
             OpCode::ShiftRightX1(r) => {
@@ -371,7 +368,7 @@ impl Machine {
                     self.registers[rx] = self.registers[ry] - self.registers[rx];
                     self.registers[0xF] = 1; // set borrow flag
                 } else {
-                    self.registers[rx] = 0;
+                    self.registers[rx] = 256 - (self.registers[rx] - self.registers[ry]);
                     self.registers[0xF] = 0; // unset borrow flag
                 }
                 self.pc_inc();
@@ -385,7 +382,7 @@ impl Machine {
             }
             OpCode::SkipNotEqXY(rx, ry) => {
                 if self.registers[rx] != self.registers[ry] {
-                    self.opcode += 1;
+                    self.pc_inc();
                 }
                 self.pc_inc();
             }
@@ -606,6 +603,7 @@ fn main() -> io::Result<()> {
                     keycode: Some(Keycode::Escape),
                     ..
                 } => {
+                    println!("exiting");
                     break 'running;
                 }
                 Event::KeyDown { keycode: Some(kcode), .. } => {
@@ -622,9 +620,9 @@ fn main() -> io::Result<()> {
         }
 
         let alive = m.exec_single();
-        if !alive {
-            break 'running;
-        }
+        // if !alive {
+        //     println!("program halted");
+        // }
 
         // Render
         if refresh_window || (alive && m.draw_flag) {
@@ -643,7 +641,7 @@ fn main() -> io::Result<()> {
         }
 
         // Time management!
-        ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 120));
+        ::std::thread::sleep(Duration::new(0, 500_000_000u32 / 60));
     }
 
     Ok(())
