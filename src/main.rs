@@ -10,11 +10,11 @@ use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Point;
 use sdl2::render::WindowCanvas;
+use std::convert::TryFrom;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 use std::time::Duration;
-use std::convert::TryFrom;
 
 // global constant
 const VIDEO_SCALING: u32 = 4;
@@ -435,9 +435,9 @@ impl Machine {
                 self.pc_inc();
             }
             OpCode::SpriteX(r) => {
-                self.index_register = self.registers[r]*5;
+                self.index_register = self.registers[r] * 5;
                 self.pc_inc();
-            },
+            }
             OpCode::DumpX(r) => {
                 for i in 0..=r {
                     let location = usize::from(self.index_register) + i;
@@ -503,7 +503,7 @@ impl Machine {
     }
 }
 
-fn render(canvas: &mut WindowCanvas, gfx: &[u8; GFX_HEIGHT*GFX_WIDTH]) {
+fn render(canvas: &mut WindowCanvas, gfx: &[u8; GFX_HEIGHT * GFX_WIDTH]) {
     canvas.set_draw_color(Color::RGB(0, 0, 0));
     canvas.clear();
     canvas.set_draw_color(Color::RGB(255, 255, 255));
