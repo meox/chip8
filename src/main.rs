@@ -298,12 +298,13 @@ impl Machine {
             OpCode::Return => {
                 let v = self.stack.pop().unwrap();
                 self.pc = usize::from(v);
-                self.sp -= 1;
+                self.pc_inc();
             }
-            OpCode::JumpTo(n) => self.pc = usize::from(n),
+            OpCode::JumpTo(n) => {
+                self.pc = usize::from(n);
+            }
             OpCode::Call(n) => {
                 self.stack.push(self.pc);
-                self.sp += 1;
                 self.pc = usize::from(n);
             }
             OpCode::SkipEq(r, n) => {
