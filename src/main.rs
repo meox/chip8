@@ -8,11 +8,13 @@ use rand::Rng;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
+use sdl2::rect::Point;
 use sdl2::render::WindowCanvas;
 use std::fs::File;
 use std::io;
 use std::io::prelude::*;
 use std::time::Duration;
+use std::convert::TryFrom;
 
 // global constant
 const VIDEO_SCALING: u32 = 4;
@@ -43,6 +45,9 @@ struct Machine {
 
     // current key press
     key_pressed: Option<u16>,
+
+    // draw flag
+    draw_flag: bool,
 }
 
 enum Timer {
@@ -183,6 +188,7 @@ impl Machine {
             opcode: 0,
             program_size: 0,
             key_pressed: None,
+            draw_flag: false,
         };
     }
 
@@ -268,63 +274,67 @@ impl Machine {
     fn exec_single(&mut self) -> bool {
         let opcode = parse_opcode(self.fetch_opcode());
         println!("OPCODE = {:?}", opcode);
-        let opcode_mem_size = 2;
 
+        self.draw_flag = false;
         match opcode {
             OpCode::Invalid => return false,
-            OpCode::Clear => self.gfx = [0; GFX_HEIGHT * GFX_WIDTH],
+            OpCode::Clear => {
+                self.gfx = [0; GFX_HEIGHT * GFX_WIDTH];
+                self.draw_flag = true;
+                self.pc_inc();
+            }
             OpCode::Return => {
-                let v = self.stack[self.sp];
+                let v = self.stack.pop().unwrap();
                 self.pc = usize::from(v);
                 self.sp -= 1;
             }
             OpCode::JumpTo(n) => self.pc = usize::from(n),
             OpCode::Call(n) => {
-                self.stack[self.sp] = self.pc;
+                self.stack.push(self.pc);
                 self.sp += 1;
                 self.pc = usize::from(n);
             }
             OpCode::SkipEq(r, n) => {
                 if self.registers[r] == n {
-                    self.pc += opcode_mem_size;
+                    self.pc_inc();
                 }
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::SkipNotEq(r, n) => {
                 if self.registers[r] != n {
-                    self.pc += opcode_mem_size;
+                    self.pc_inc();
                 }
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::SkipEqXY(rx, ry) => {
                 if self.registers[rx] == self.registers[ry] {
-                    self.pc += opcode_mem_size;
+                    self.pc_inc();
                 }
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::SetX(r, n) => {
                 self.registers[r] = n;
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::AddX(r, n) => {
                 self.registers[r] = (self.registers[r] + n) & 0x00FF; // force cast to 8bit
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::AssignXY(rx, ry) => {
                 self.registers[rx] = self.registers[ry];
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::OrXY(rx, ry) => {
                 self.registers[rx] |= self.registers[ry];
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::AndXY(rx, ry) => {
                 self.registers[rx] &= self.registers[ry];
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::XorXY(rx, ry) => {
                 self.registers[rx] ^= self.registers[ry];
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::AddXY(rx, ry) => {
                 self.registers[rx] += self.registers[ry];
@@ -334,7 +344,7 @@ impl Machine {
                     self.registers[0xF] = 0; // unset carry flag
                 }
                 self.registers[rx] &= 0x00FF;
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::SubXY(rx, ry) => {
                 if self.registers[rx] >= self.registers[ry] {
@@ -344,13 +354,13 @@ impl Machine {
                     self.registers[rx] = 0;
                     self.registers[0xF] = 0; // unset borrow flag
                 }
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::ShiftRightX1(r) => {
                 let b = self.registers[r] % 2;
                 self.registers[0xF] = b;
                 self.registers[r] >>= 1;
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::SubYX(rx, ry) => {
                 if self.registers[ry] >= self.registers[rx] {
@@ -360,64 +370,94 @@ impl Machine {
                     self.registers[rx] = 0;
                     self.registers[0xF] = 0; // unset borrow flag
                 }
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::ShiftLeftX1(r) => {
                 let b = self.registers[r] & 0x80; // take the first bit
                 self.registers[0xF] = b;
                 self.registers[r] <<= 1;
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::SkipNotEqXY(rx, ry) => {
                 if self.registers[rx] != self.registers[ry] {
                     self.opcode += 1;
                 }
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
-            OpCode::SetIR(n) => self.index_register = n,
-            OpCode::Flow(n) => self.pc = usize::from(self.registers[0] + n),
+            OpCode::SetIR(n) => {
+                self.index_register = n;
+                self.pc_inc();
+            }
+            OpCode::Flow(n) => {
+                self.pc = usize::from(self.registers[0] + n);
+            }
             OpCode::RandX(r, n) => {
                 let mut rng = rand::thread_rng();
                 self.registers[r] = rng.gen::<u16>() & n;
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::KeyPressedX(r) => {
                 if let Some(k) = self.key_pressed {
                     if k == self.registers[r] {
-                        self.pc += opcode_mem_size;
+                        self.pc_inc();
                     }
                 }
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::KeyNotPressedX(r) => {
                 if let Some(k) = self.key_pressed {
                     if k != self.registers[r] {
-                        self.pc += opcode_mem_size;
+                        self.pc_inc();
                     }
                 }
-                self.pc += opcode_mem_size
+                self.pc_inc();
             }
             OpCode::KeyPressX(r) => {
                 if let Some(k) = self.key_pressed {
                     self.registers[r] = k;
-                    self.pc += opcode_mem_size;
+                    self.pc_inc();
                 }
             }
             OpCode::TimerX(r) => {
                 self.registers[r] = self.get_timer(Timer::Delay);
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::SetDelayTimer(r) => {
                 self.set_timer(Timer::Delay, self.registers[r]);
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::SetSoundTimer(r) => {
                 self.set_timer(Timer::Sound, self.registers[r]);
-                self.pc += opcode_mem_size;
+                self.pc_inc();
             }
             OpCode::MemAdd(r) => {
                 self.index_register += self.registers[r];
-                self.pc += opcode_mem_size;
+                self.pc_inc();
+            }
+            OpCode::SpriteX(r) => {
+                self.index_register = self.registers[r]*5;
+                self.pc_inc();
+            },
+            OpCode::DumpX(r) => {
+                for i in 0..=r {
+                    let location = usize::from(self.index_register) + i;
+                    self.memory[location] = u8::try_from(self.registers[i] & 0x00FF).unwrap();
+                }
+                self.pc_inc();
+            }
+            OpCode::LoadX(r) => {
+                for i in 0..=r {
+                    let location = usize::from(self.index_register) + i;
+                    self.registers[i] = u16::from(self.memory[location]);
+                }
+                self.pc_inc();
+            }
+            OpCode::Draw(rx, ry, n) => {
+                let x = self.registers[rx];
+                let y = self.registers[ry];
+                self.draw_flag = true;
+
+                self.pc_inc();
             }
             _ => {
                 println!("Not implemented: {:?}", opcode);
@@ -425,6 +465,11 @@ impl Machine {
             }
         }
         true
+    }
+
+    fn pc_inc(&mut self) {
+        let opcode_mem_size = 2;
+        self.pc += opcode_mem_size;
     }
 
     fn load_fontset(&mut self) {
@@ -458,9 +503,22 @@ impl Machine {
     }
 }
 
-fn render(canvas: &mut WindowCanvas, color: Color) {
-    canvas.set_draw_color(color);
+fn render(canvas: &mut WindowCanvas, gfx: &[u8; GFX_HEIGHT*GFX_WIDTH]) {
+    canvas.set_draw_color(Color::RGB(0, 0, 0));
     canvas.clear();
+    canvas.set_draw_color(Color::RGB(255, 255, 255));
+
+    for y in 0..GFX_HEIGHT {
+        for x in 0..GFX_WIDTH {
+            let p: usize = y * GFX_WIDTH + x;
+            if gfx[p] > 0 {
+                let px = i32::try_from(x).unwrap();
+                let py = i32::try_from(y).unwrap();
+
+                canvas.draw_point(Point::new(px, py));
+            }
+        }
+    }
     canvas.present();
 }
 
@@ -496,7 +554,6 @@ fn main() -> io::Result<()> {
     canvas.present();
 
     let mut event_pump = sdl_context.event_pump().unwrap();
-    let mut i = 0;
 
     'running: loop {
         // Handle events
@@ -515,11 +572,15 @@ fn main() -> io::Result<()> {
             }
         }
 
-        // Update
-        i = (i + 1) % 255;
+        let alive = m.exec_single();
+        if !alive {
+            break 'running;
+        }
 
         // Render
-        render(&mut canvas, Color::RGB(i, 64, 255 - i));
+        if alive && m.draw_flag {
+            render(&mut canvas, &m.gfx);
+        }
 
         // Time management!
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
