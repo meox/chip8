@@ -9,6 +9,7 @@ use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 use sdl2::pixels::Color;
 use sdl2::rect::Point;
+use sdl2::rect::Rect;
 use sdl2::render::WindowCanvas;
 use std::convert::TryFrom;
 use std::fs::File;
@@ -17,8 +18,8 @@ use std::io::prelude::*;
 use std::time::Duration;
 
 // global constant
-const VIDEO_SCALING: u32 = 4;
-const GFX_WIDTH: usize = 128;
+const VIDEO_SCALING: usize = 8;
+const GFX_WIDTH: usize = 64;
 const GFX_HEIGHT: usize = 32;
 const PROGRAM_START_ADDRESS: usize = 0x200;
 
@@ -178,7 +179,7 @@ fn convert_tobits(mut b: u8) -> [u8; 8] {
     for x in 0..8 {
         let bit = b & 0x01;
         b >>= 1;
-        r[7-x] = bit;
+        r[7 - x] = bit;
     }
 
     r
@@ -476,10 +477,11 @@ impl Machine {
                     for k in 0..8 {
                         let pos_video = (y + usize::from(h)) * GFX_WIDTH + (x + k);
                         let pixel_video = self.gfx[pos_video];
-                        if bits_row[7-k] != pixel_video { self.registers[0xF] = 1 };
-                        self.gfx[pos_video] ^= bits_row[7-k];
+                        if pixel_video == 1 && bits_row[k] == pixel_video {
+                            self.registers[0xF] = 1
+                        };
+                        self.gfx[pos_video] ^= bits_row[k];
                     }
-                    
                 }
                 self.pc_inc();
             }
@@ -532,14 +534,17 @@ fn render(canvas: &mut WindowCanvas, gfx: &[u8; GFX_HEIGHT * GFX_WIDTH]) {
     canvas.clear();
     canvas.set_draw_color(Color::RGB(255, 255, 255));
 
+    //let s = u32::try_from(VIDEO_SCALING).unwrap();
+
     for y in 0..GFX_HEIGHT {
         for x in 0..GFX_WIDTH {
             let p: usize = y * GFX_WIDTH + x;
             if gfx[p] > 0 {
-                let px = i32::try_from(x).unwrap();
-                let py = i32::try_from(y).unwrap();
+                let px = i32::try_from(x * VIDEO_SCALING).unwrap();
+                let py = i32::try_from(y * VIDEO_SCALING).unwrap();
 
-                canvas.draw_point(Point::new(px, py));
+                //canvas.draw_point(Point::new(px, py));
+                canvas.fill_rect(Rect::new(px, py, 4, 4));
             }
         }
     }
@@ -561,12 +566,15 @@ fn main() -> io::Result<()> {
     }
 
     // set video
-
     let sdl_context = sdl2::init().unwrap();
     let video_subsystem = sdl_context.video().unwrap();
 
     let window = video_subsystem
-        .window("CHIP 8", 128 * VIDEO_SCALING, 32 * VIDEO_SCALING)
+        .window(
+            "CHIP 8",
+            u32::try_from(GFX_WIDTH * VIDEO_SCALING).unwrap(),
+            u32::try_from(GFX_HEIGHT * VIDEO_SCALING).unwrap(),
+        )
         .position_centered()
         .build()
         .unwrap();
@@ -655,7 +663,7 @@ mod tests {
         assert_eq!([1, 1, 1, 1, 1, 1, 0, 0], convert_tobits(0xFC));
         assert_eq!([1, 1, 1, 1, 1, 1, 1, 0], convert_tobits(0xFE));
         assert_eq!([1, 1, 1, 1, 1, 1, 1, 1], convert_tobits(0xFF));
-        
+
         assert_eq!([1, 0, 1, 0, 1, 0, 1, 0], convert_tobits(0xAA));
         assert_eq!([1, 1, 0, 0, 1, 0, 0, 1], convert_tobits(0xC9));
     }
