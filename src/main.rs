@@ -173,6 +173,17 @@ fn parse_opcode(op: Option<u16>) -> OpCode {
     }
 }
 
+fn convert_tobits(mut b: u8) -> [u8; 8] {
+    let mut r: [u8; 8] = [0; 8];
+    for x in 0..8 {
+        let bit = b & 0x01;
+        b >>= 1;
+        r[7-x] = bit;
+    }
+
+    r
+}
+
 impl Machine {
     fn new() -> Machine {
         return Machine {
@@ -455,15 +466,20 @@ impl Machine {
             OpCode::Draw(rx, ry, n) => {
                 let x = usize::from(self.registers[rx]);
                 let y = usize::from(self.registers[ry]);
-                //let p = usize::from(x);
+
                 self.draw_flag = true;
+                self.registers[0xF] = 0;
                 for h in 0..n {
                     let byte_row = self.memory[usize::from(self.index_register + h)];
-                    let p_video = (y + usize::from(h)) * GFX_WIDTH + x;
-                    let byte_video = self.gfx[p_video];
-                    let r = byte_row ^ byte_video;
-                    self.registers[0xF] = if r != byte_row { 1 } else { 0 };
-                    self.gfx[p_video] = r;
+                    let bits_row = convert_tobits(byte_row);
+
+                    for k in 0..8 {
+                        let pos_video = (y + usize::from(h)) * GFX_WIDTH + (x + k);
+                        let pixel_video = self.gfx[pos_video];
+                        if bits_row[7-k] != pixel_video { self.registers[0xF] = 1 };
+                        self.gfx[pos_video] ^= bits_row[7-k];
+                    }
+                    
                 }
                 self.pc_inc();
             }
@@ -627,5 +643,20 @@ mod tests {
         while m.exec_single() {}
 
         assert_eq!(7, m.registers[0]);
+    }
+
+    #[test]
+    fn convert_tobits_simple() {
+        assert_eq!([1, 0, 0, 0, 0, 0, 0, 0], convert_tobits(0x80));
+        assert_eq!([1, 1, 0, 0, 0, 0, 0, 0], convert_tobits(0xC0));
+        assert_eq!([1, 1, 1, 0, 0, 0, 0, 0], convert_tobits(0xE0));
+        assert_eq!([1, 1, 1, 1, 0, 0, 0, 0], convert_tobits(0xF0));
+        assert_eq!([1, 1, 1, 1, 1, 0, 0, 0], convert_tobits(0xF8));
+        assert_eq!([1, 1, 1, 1, 1, 1, 0, 0], convert_tobits(0xFC));
+        assert_eq!([1, 1, 1, 1, 1, 1, 1, 0], convert_tobits(0xFE));
+        assert_eq!([1, 1, 1, 1, 1, 1, 1, 1], convert_tobits(0xFF));
+        
+        assert_eq!([1, 0, 1, 0, 1, 0, 1, 0], convert_tobits(0xAA));
+        assert_eq!([1, 1, 0, 0, 1, 0, 0, 1], convert_tobits(0xC9));
     }
 }
